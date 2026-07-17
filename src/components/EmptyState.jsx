@@ -10,7 +10,7 @@ export default function EmptyState({ onNew, filtered }) {
       <p className="text-muted text-sm max-w-sm mx-auto mb-6">
         {filtered
           ? 'Try a different search term or clear your status filter.'
-          : 'Log your first whitelist spot — project, chain, mint date — and start keeping the register.'}
+          : 'Log your first whitelist spot, project, chain, mint date and start keeping the register.'}
       </p>
       {!filtered && (
         <button
