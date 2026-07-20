@@ -57,6 +57,75 @@ function parseAddressList(raw) {
     .map(normalize);
 }
 
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
+
+function toICSDate(dateStr) {
+  // dateStr is "YYYY-MM-DD" from a <input type="date">
+  return dateStr.replace(/-/g, "");
+}
+
+function nextDayICS(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+}
+
+function escapeICSText(text) {
+  return String(text).replace(/[\\;,]/g, (m) => `\\${m}`).replace(/\n/g, "\\n");
+}
+
+function buildICS(project) {
+  const start = toICSDate(project.mintDate);
+  const end = nextDayICS(project.mintDate);
+  const stamp =
+    new Date()
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .split(".")[0] + "Z";
+  const uid = `${project.id}@allowlist-ledger`;
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Allowlist Ledger//Mint Reminder//EN",
+    "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${stamp}`,
+    `DTSTART;VALUE=DATE:${start}`,
+    `DTEND;VALUE=DATE:${end}`,
+    `SUMMARY:${escapeICSText(`${project.name} — mint`)}`,
+    `DESCRIPTION:${escapeICSText("Mint day tracked in Allowlist Ledger.")}`,
+    "BEGIN:VALARM",
+    "ACTION:DISPLAY",
+    "DESCRIPTION:Mint day reminder",
+    "TRIGGER:-P1D",
+    "END:VALARM",
+    "BEGIN:VALARM",
+    "ACTION:DISPLAY",
+    "DESCRIPTION:Mint day reminder",
+    "TRIGGER:-PT1H",
+    "END:VALARM",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+}
+
+function downloadICS(project) {
+  const ics = buildICS(project);
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${project.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}-mint.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 const STATUS = {
   eligible: { label: "ELIGIBLE", short: "OK" },
   not_eligible: { label: "NOT ELIG.", short: "NO" },
@@ -243,7 +312,8 @@ export default function EligibilityMatrix() {
           border-bottom: 1px solid var(--hairline);
           white-space: nowrap;
         }
-        thead th.proj-col {
+        thead th.proj-col,
+        thead th.wallet-col-head {
           border-left: 1px solid var(--hairline);
           text-align: center;
         }
@@ -264,7 +334,11 @@ export default function EligibilityMatrix() {
           font-size: 13px;
           vertical-align: middle;
         }
-        tbody td.wallet-col { white-space: nowrap; }
+        tbody td.wallet-col,
+        tbody td.proj-row-head {
+          white-space: nowrap;
+          min-width: 160px;
+        }
         tbody td.proj-col { text-align: center; border-left: 1px solid var(--hairline); }
         .wallet-label { color: var(--ink); font-weight: 500; }
         .wallet-addr { color: var(--ink-dim); font-size: 11px; }
@@ -377,20 +451,13 @@ export default function EligibilityMatrix() {
           <table>
             <thead>
               <tr>
-                <th>Wallet</th>
-                {sortedProjects.map((p) => (
-                  <th key={p.id} className="proj-col">
-                    <div className="proj-head-name">{p.name}</div>
-                    <div className="proj-head-date">
-                      {p.mintDate ? new Date(p.mintDate).toLocaleDateString() : "no mint date"}
-                    </div>
+                <th>Project</th>
+                {wallets.map((w) => (
+                  <th key={w.id} className="wallet-col-head">
+                    <div className="proj-head-name">{w.label || "Unlabeled"}</div>
+                    <div className="proj-head-date">{shortAddr(w.address)}</div>
                     <div className="proj-actions">
-                      {p.sourceUrl && (
-                        <button className="icon-btn" onClick={() => setCheckModalProject(p)}>
-                          check all
-                        </button>
-                      )}
-                      <button className="icon-btn" onClick={() => removeProject(p.id)}>
+                      <button className="icon-btn" onClick={() => removeWallet(w.id)}>
                         remove
                       </button>
                     </div>
@@ -399,18 +466,38 @@ export default function EligibilityMatrix() {
               </tr>
             </thead>
             <tbody>
-              {wallets.map((w) => (
-                <tr key={w.id}>
-                  <td className="wallet-col">
-                    <span className="wallet-label">{w.label || "Unlabeled"}</span>
+              {sortedProjects.map((p) => (
+                <tr key={p.id}>
+                  <td className="proj-row-head">
+                    <span className="wallet-label">{p.name}</span>
                     <br />
-                    <span className="wallet-addr">{shortAddr(w.address)}</span>
-                    <button className="row-remove" onClick={() => removeWallet(w.id)} title="Remove wallet">
+                    <span className="wallet-addr">
+                      {p.mintDate ? new Date(p.mintDate).toLocaleDateString() : "no mint date"}
+                    </span>
+                    {p.sourceUrl && (
+                      <button
+                        className="icon-btn"
+                        style={{ display: "block", marginTop: 4 }}
+                        onClick={() => setCheckModalProject(p)}
+                      >
+                        check all
+                      </button>
+                    )}
+                    {p.mintDate && (
+                      <button
+                        className="icon-btn"
+                        style={{ display: "block", marginTop: 4 }}
+                        onClick={() => downloadICS(p)}
+                      >
+                        add to calendar
+                      </button>
+                    )}
+                    <button className="row-remove" onClick={() => removeProject(p.id)} title="Remove project">
                       ×
                     </button>
                   </td>
-                  {sortedProjects.map((p) => (
-                    <td key={p.id} className="proj-col">
+                  {wallets.map((w) => (
+                    <td key={w.id} className="proj-col">
                       <Stamp status={getStatus(w.id, p.id)} onClick={() => cycleStatus(w.id, p.id)} />
                     </td>
                   ))}
@@ -444,10 +531,56 @@ export default function EligibilityMatrix() {
 function AddWalletModal({ onClose, onAdd }) {
   const [address, setAddress] = useState("");
   const [label, setLabel] = useState("");
+  const [connectStatus, setConnectStatus] = useState("idle"); // idle | connecting | error | connected
+  const [connectError, setConnectError] = useState("");
+
+  const hasProvider = typeof window !== "undefined" && Boolean(window.ethereum);
+
+  async function connectWallet() {
+    if (!hasProvider) {
+      setConnectStatus("error");
+      setConnectError("No wallet extension found. Install MetaMask, Rabby, or similar.");
+      return;
+    }
+    setConnectStatus("connecting");
+    setConnectError("");
+    try {
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      if (!accounts || accounts.length === 0) {
+        throw new Error("No account returned");
+      }
+      setAddress(accounts[0]);
+      setConnectStatus("connected");
+    } catch (err) {
+      setConnectStatus("error");
+      // 4001 is MetaMask's "user rejected the request" code
+      setConnectError(
+        err.code === 4001 ? "Connection request was rejected." : err.message || "Connection failed."
+      );
+    }
+  }
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Add Wallet</h2>
+
+        <button className="btn primary" style={{ width: "100%", marginBottom: 14 }} onClick={connectWallet} disabled={connectStatus === "connecting"}>
+          {connectStatus === "connecting" ? "Connecting…" : "🦊 Connect Wallet"}
+        </button>
+        {connectStatus === "error" && <div className="error-box" style={{ marginBottom: 14 }}>{connectError}</div>}
+        {connectStatus === "connected" && (
+          <div className="success-box" style={{ marginBottom: 14 }}>
+            Connected — address filled in below. Switch accounts in your wallet extension
+            before reconnecting to add a different one.
+          </div>
+        )}
+
+        <div className="hint" style={{ marginBottom: 14 }}>
+          Or enter an address manually — useful for watch-only wallets or hardware wallets
+          not currently connected.
+        </div>
+
         <div className="field">
           <label>Address</label>
           <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="0x..." />
@@ -521,8 +654,16 @@ function CheckAllModal({ project, onClose, onApply }) {
     setStatus("loading");
     setErrorMsg("");
     try {
-      const res = await fetch(project.sourceUrl);
-      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+      const proxyUrl = `/api/fetch-list?url=${encodeURIComponent(project.sourceUrl)}`;
+      const res = await fetch(proxyUrl);
+      const contentType = res.headers.get("content-type") || "";
+
+      if (!res.ok) {
+        // Proxy returns JSON error bodies on failure
+        const body = contentType.includes("application/json") ? await res.json() : null;
+        throw new Error(body?.error || `Proxy responded ${res.status}`);
+      }
+
       const text = await res.text();
       const addresses = parseAddressList(text);
       if (addresses.length === 0) throw new Error("No addresses found in response");
@@ -531,9 +672,7 @@ function CheckAllModal({ project, onClose, onApply }) {
       onApply(addresses);
     } catch (err) {
       setStatus("error");
-      setErrorMsg(
-        `${err.message}. This is often a CORS restriction on the source site — paste the list manually below instead.`
-      );
+      setErrorMsg(`${err.message}. You can paste the list manually below instead.`);
     }
   }
 
