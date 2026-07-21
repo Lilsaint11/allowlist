@@ -530,6 +530,33 @@ export default function EligibilityMatrix() {
         </div>
       </div>
 
+      {/* Quick Wallet Manager Bar */}
+<div style={{ maxWidth: 1200, margin: "0 auto 16px auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+  {wallets.map((w) => (
+    <div
+      key={w.id}
+      style={{
+        background: "var(--bg-card)",
+        border: "1px solid var(--border-color)",
+        borderRadius: 20,
+        padding: "4px 12px",
+        fontSize: 12,
+        display: "flex",
+        alignItems: "center",
+        gap: 6
+      }}
+    >
+      <span>{w.label || shortAddr(w.address)}</span>
+      <button
+        onClick={() => removeWallet(w.id)}
+        style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0 }}
+      >
+        ✕
+      </button>
+    </div>
+  ))}
+</div>
+
       {/* Controls Bar */}
       <div className="controls-bar">
         <input
