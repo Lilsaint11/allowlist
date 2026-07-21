@@ -1,14 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
 
-/* ============================================================
-   ALLOWLIST LEDGER — Eligibility Matrix
-   Drop this component into your existing Vite/React project.
-   It's self-contained: own state, own localStorage keys
-   ("ledger:wallets", "ledger:projects", "ledger:eligibility").
-   Rename the keys if you want it to share storage with your
-   existing app, or lift the state up into your current store.
-   ============================================================ */
-
 const STORAGE = {
   wallets: "ledger:wallets",
   projects: "ledger:projects",
@@ -35,7 +26,6 @@ function normalize(addr) {
   return (addr || "").trim().toLowerCase();
 }
 
-/** Accepts JSON array, JSON array of {address}, or raw CSV/newline text. */
 function parseAddressList(raw) {
   const text = raw.trim();
   if (!text) return [];
@@ -47,9 +37,7 @@ function parseAddressList(raw) {
         .map(normalize)
         .filter(Boolean);
     }
-  } catch {
-    /* not JSON, fall through to CSV/newline parsing */
-  }
+  } catch {}
   return text
     .split(/[\n,]/)
     .map((s) => s.trim())
@@ -57,34 +45,19 @@ function parseAddressList(raw) {
     .map(normalize);
 }
 
-function pad(n) {
-  return String(n).padStart(2, "0");
-}
-
-function toICSDate(dateStr) {
-  // dateStr is "YYYY-MM-DD" from a <input type="date">
-  return dateStr.replace(/-/g, "");
-}
-
-function nextDayICS(dateStr) {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-}
-
-function escapeICSText(text) {
-  return String(text).replace(/[\\;,]/g, (m) => `\\${m}`).replace(/\n/g, "\\n");
-}
-
 function buildICS(project) {
-  const start = toICSDate(project.mintDate);
-  const end = nextDayICS(project.mintDate);
-  const stamp =
-    new Date()
-      .toISOString()
-      .replace(/[-:]/g, "")
-      .split(".")[0] + "Z";
-  const uid = `${project.id}@allowlist-ledger`;
+  if (!project.mintDate) return "";
+
+  const startDate = new Date(project.mintDate);
+  // Default to 1 hour event duration
+  const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+
+  const formatICSDate = (d) =>
+    d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+  const start = formatICSDate(startDate);
+  const end = formatICSDate(endDate);
+  const stamp = formatICSDate(new Date());
 
   return [
     "BEGIN:VCALENDAR",
@@ -92,21 +65,16 @@ function buildICS(project) {
     "PRODID:-//Allowlist Ledger//Mint Reminder//EN",
     "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
-    `UID:${uid}`,
+    `UID:${project.id}@allowlist-ledger`,
     `DTSTAMP:${stamp}`,
-    `DTSTART;VALUE=DATE:${start}`,
-    `DTEND;VALUE=DATE:${end}`,
-    `SUMMARY:${escapeICSText(`${project.name} — mint`)}`,
-    `DESCRIPTION:${escapeICSText("Mint day tracked in Allowlist Ledger.")}`,
+    `DTSTART:${start}`,
+    `DTEND:${end}`,
+    `SUMMARY:${project.name} — Mint Time`,
+    `DESCRIPTION:Mint event tracked in Allowlist Ledger.`,
     "BEGIN:VALARM",
     "ACTION:DISPLAY",
-    "DESCRIPTION:Mint day reminder",
-    "TRIGGER:-P1D",
-    "END:VALARM",
-    "BEGIN:VALARM",
-    "ACTION:DISPLAY",
-    "DESCRIPTION:Mint day reminder",
-    "TRIGGER:-PT1H",
+    "DESCRIPTION:Mint starting in 15 minutes!",
+    "TRIGGER:-PT15M", // 15-minute alert
     "END:VALARM",
     "END:VEVENT",
     "END:VCALENDAR",
@@ -126,22 +94,27 @@ function downloadICS(project) {
   URL.revokeObjectURL(url);
 }
 
-const STATUS = {
-  eligible: { label: "ELIGIBLE", short: "OK" },
-  not_eligible: { label: "NOT ELIG.", short: "NO" },
-  unchecked: { label: "UNCHECKED", short: "—" },
+const STATUS_CONFIG = {
+  eligible: { label: "Eligible", bg: "rgba(34, 197, 94, 0.15)", color: "#4ade80", border: "#22c55e" },
+  not_eligible: { label: "Not Eligible", bg: "rgba(239, 68, 68, 0.15)", color: "#f87171", border: "#ef4444" },
+  unchecked: { label: "Unchecked", bg: "rgba(148, 163, 184, 0.1)", color: "#94a3b8", border: "#475569" },
 };
 
-function Stamp({ status, onClick }) {
-  const s = STATUS[status] || STATUS.unchecked;
+function StatusBadge({ status, onClick }) {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.unchecked;
   return (
     <button
       onClick={onClick}
-      className="stamp"
-      data-status={status}
-      title="Click to cycle status manually"
+      className="status-badge"
+      style={{
+        backgroundColor: cfg.bg,
+        color: cfg.color,
+        borderColor: cfg.border,
+      }}
+      title="Click to change status"
     >
-      [{s.short === "—" ? "—" : s.short}]
+      <span className="dot" style={{ backgroundColor: cfg.color }} />
+      {cfg.label}
     </button>
   );
 }
@@ -150,6 +123,8 @@ export default function EligibilityMatrix() {
   const [wallets, setWallets] = useState(() => load(STORAGE.wallets, []));
   const [projects, setProjects] = useState(() => load(STORAGE.projects, []));
   const [eligibility, setEligibility] = useState(() => load(STORAGE.eligibility, {}));
+  const [viewMode, setViewMode] = useState("cards"); // 'cards' | 'table'
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [showAddWallet, setShowAddWallet] = useState(false);
   const [showAddProject, setShowAddProject] = useState(false);
@@ -157,10 +132,7 @@ export default function EligibilityMatrix() {
 
   useEffect(() => localStorage.setItem(STORAGE.wallets, JSON.stringify(wallets)), [wallets]);
   useEffect(() => localStorage.setItem(STORAGE.projects, JSON.stringify(projects)), [projects]);
-  useEffect(
-    () => localStorage.setItem(STORAGE.eligibility, JSON.stringify(eligibility)),
-    [eligibility]
-  );
+  useEffect(() => localStorage.setItem(STORAGE.eligibility, JSON.stringify(eligibility)), [eligibility]);
 
   const cellKey = (walletId, projectId) => `${walletId}|${projectId}`;
 
@@ -188,10 +160,7 @@ export default function EligibilityMatrix() {
   }
 
   function addProject(name, mintDate, sourceUrl) {
-    setProjects((prev) => [
-      ...prev,
-      { id: uid(), name: name.trim(), mintDate, sourceUrl: sourceUrl.trim() },
-    ]);
+    setProjects((prev) => [...prev, { id: uid(), name: name.trim(), mintDate, sourceUrl: sourceUrl.trim() }]);
     setShowAddProject(false);
   }
 
@@ -218,508 +187,539 @@ export default function EligibilityMatrix() {
     });
   }
 
-  const sortedProjects = useMemo(
-    () =>
-      [...projects].sort((a, b) => {
+  const filteredProjects = useMemo(() => {
+    return projects
+      .filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => {
         if (!a.mintDate) return 1;
         if (!b.mintDate) return -1;
         return new Date(a.mintDate) - new Date(b.mintDate);
-      }),
-    [projects]
-  );
+      });
+  }, [projects, searchQuery]);
 
   return (
-    <div className="ledger-root">
+    <div className="app-container">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap');
-
-        .ledger-root {
-          --bg-void: #0b1120;
-          --surface: #12192b;
-          --surface-raised: #172038;
-          --hairline: #29334a;
-          --ink: #e8e6de;
-          --ink-dim: #9aa3b8;
-          --brass: #d4a73d;
-          --rust: #c1443c;
-          --graphite: #5b6578;
-          font-family: 'IBM Plex Sans', sans-serif;
-          background: var(--bg-void);
-          color: var(--ink);
-          min-height: 100vh;
-          padding: 32px 24px 64px;
+        :root {
+          --bg-main: #0f172a;
+          --bg-card: #1e293b;
+          --bg-card-hover: #334155;
+          --border-color: #334155;
+          --text-main: #f8fafc;
+          --text-muted: #94a3b8;
+          --accent: #6366f1;
+          --accent-hover: #4f46e5;
         }
-        .ledger-root * { box-sizing: border-box; }
 
-        .masthead {
+        .app-container {
+          min-height: 100vh;
+          background-color: var(--bg-main);
+          color: var(--text-main);
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          padding: 20px;
+          box-sizing: border-box;
+        }
+
+        .header {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          max-width: 1200px;
+          margin: 0 auto 24px auto;
+        }
+
+        @media (min-width: 768px) {
+          .header {
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+          }
+        }
+
+        .header-titles h1 {
+          font-size: 24px;
+          font-weight: 700;
+          margin: 0 0 4px 0;
+          letter-spacing: -0.02em;
+        }
+
+        .header-titles p {
+          color: var(--text-muted);
+          font-size: 14px;
+          margin: 0;
+        }
+
+        .header-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          align-items: center;
+        }
+
+        .btn {
+          background-color: var(--bg-card);
+          color: var(--text-main);
+          border: 1px solid var(--border-color);
+          padding: 10px 16px;
+          border-radius: 8px;
+          font-weight: 500;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .btn:hover {
+          background-color: var(--bg-card-hover);
+        }
+
+        .btn-primary {
+          background-color: var(--accent);
+          border-color: var(--accent);
+        }
+
+        .btn-primary:hover {
+          background-color: var(--accent-hover);
+        }
+
+        .controls-bar {
+          max-width: 1200px;
+          margin: 0 auto 24px auto;
+          display: flex;
+          gap: 12px;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .search-input {
+          background: var(--bg-card);
+          border: 1px solid var(--border-color);
+          color: var(--text-main);
+          padding: 8px 14px;
+          border-radius: 8px;
+          font-size: 14px;
+          width: 100%;
+          max-width: 320px;
+        }
+
+        .view-toggle {
+          display: flex;
+          background: var(--bg-card);
+          padding: 3px;
+          border-radius: 8px;
+          border: 1px solid var(--border-color);
+        }
+
+        .toggle-btn {
+          background: transparent;
+          border: none;
+          color: var(--text-muted);
+          padding: 6px 12px;
+          font-size: 13px;
+          font-weight: 500;
+          border-radius: 6px;
+          cursor: pointer;
+        }
+
+        .toggle-btn.active {
+          background: var(--accent);
+          color: white;
+        }
+
+        /* Card List Styles (Mobile Friendly) */
+        .cards-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 16px;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+
+        @media (min-width: 768px) {
+          .cards-grid {
+            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+          }
+        }
+
+        .project-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          padding: 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .card-header {
           display: flex;
           justify-content: space-between;
-          align-items: flex-end;
-          border-bottom: 2px solid var(--hairline);
-          padding-bottom: 18px;
-          margin-bottom: 28px;
-          flex-wrap: wrap;
-          gap: 16px;
+          align-items: flex-start;
         }
-        .masthead h1 {
-          font-family: 'Big Shoulders Display', sans-serif;
-          font-weight: 800;
-          font-size: 34px;
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-          margin: 0;
-          line-height: 0.95;
-        }
-        .masthead .sub {
-          font-family: 'IBM Plex Mono', monospace;
-          font-size: 12px;
-          color: var(--ink-dim);
-          letter-spacing: 0.08em;
-          margin-top: 4px;
-        }
-        .toolbar { display: flex; gap: 10px; }
-        .btn {
-          font-family: 'IBM Plex Mono', monospace;
-          font-size: 12px;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          background: var(--surface-raised);
-          border: 1px solid var(--hairline);
-          color: var(--ink);
-          padding: 9px 14px;
-          border-radius: 3px;
-          cursor: pointer;
-          transition: border-color 0.15s ease;
-        }
-        .btn:hover { border-color: var(--brass); }
-        .btn.primary { border-color: var(--brass); color: var(--brass); }
 
-        .matrix-wrap {
-          overflow-x: auto;
-          border: 1px solid var(--hairline);
-          border-radius: 4px;
-          background: var(--surface);
+        .card-title {
+          font-size: 18px;
+          font-weight: 600;
+          margin: 0 0 4px 0;
         }
-        table { border-collapse: collapse; width: 100%; min-width: 640px; }
-        thead th {
-          font-family: 'IBM Plex Mono', monospace;
-          font-size: 11px;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-          color: var(--ink-dim);
-          text-align: left;
-          padding: 12px 16px;
-          border-bottom: 1px solid var(--hairline);
-          white-space: nowrap;
-        }
-        thead th.proj-col,
-        thead th.wallet-col-head {
-          border-left: 1px solid var(--hairline);
-          text-align: center;
-        }
-        .proj-head-name { color: var(--ink); font-size: 12px; margin-bottom: 2px; }
-        .proj-head-date { font-weight: 400; color: var(--ink-dim); }
-        .proj-actions { margin-top: 6px; display: flex; gap: 6px; justify-content: center; }
-        .icon-btn {
-          background: none; border: none; color: var(--ink-dim);
-          font-family: 'IBM Plex Mono', monospace; font-size: 10px;
-          cursor: pointer; text-decoration: underline; padding: 0;
-        }
-        .icon-btn:hover { color: var(--brass); }
 
-        tbody td {
-          padding: 12px 16px;
-          border-bottom: 1px solid var(--hairline);
-          font-family: 'IBM Plex Mono', monospace;
+        .card-date {
+          font-size: 12px;
+          color: var(--text-muted);
+        }
+
+        .wallet-list {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          border-top: 1px solid var(--border-color);
+          padding-top: 12px;
+        }
+
+        .wallet-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .wallet-info {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .wallet-name {
           font-size: 13px;
-          vertical-align: middle;
+          font-weight: 500;
         }
-        tbody td.wallet-col,
-        tbody td.proj-row-head {
-          white-space: nowrap;
-          min-width: 160px;
-        }
-        tbody td.proj-col { text-align: center; border-left: 1px solid var(--hairline); }
-        .wallet-label { color: var(--ink); font-weight: 500; }
-        .wallet-addr { color: var(--ink-dim); font-size: 11px; }
-        .row-remove {
-          background: none; border: none; color: var(--ink-dim);
-          cursor: pointer; font-size: 14px; margin-left: 8px;
-        }
-        .row-remove:hover { color: var(--rust); }
 
-        .stamp {
-          font-family: 'IBM Plex Mono', monospace;
-          font-weight: 700;
+        .wallet-addr-text {
           font-size: 11px;
-          letter-spacing: 0.06em;
-          padding: 5px 10px;
-          border-radius: 2px;
-          border: 2px solid var(--graphite);
-          color: var(--graphite);
-          background: transparent;
+          color: var(--text-muted);
+          font-family: monospace;
+        }
+
+        .status-badge {
+          border: 1px solid;
+          padding: 4px 10px;
+          border-radius: 20px;
+          font-size: 12px;
+          font-weight: 500;
           cursor: pointer;
-          transform: rotate(-2deg);
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
           transition: transform 0.1s ease;
         }
-        .stamp:hover { transform: rotate(0deg) scale(1.04); }
-        .stamp[data-status="eligible"] { border-color: var(--brass); color: var(--brass); }
-        .stamp[data-status="not_eligible"] { border-color: var(--rust); color: var(--rust); }
-        .stamp[data-status="unchecked"] { border-style: dashed; }
 
-        .empty-state {
-          padding: 48px 24px;
-          text-align: center;
-          color: var(--ink-dim);
-          font-family: 'IBM Plex Mono', monospace;
-          font-size: 13px;
+        .status-badge:active {
+          transform: scale(0.95);
         }
 
-        .modal-backdrop {
-          position: fixed; inset: 0; background: rgba(11,17,32,0.8);
-          display: flex; align-items: center; justify-content: center;
-          z-index: 50; padding: 20px;
+        .dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
         }
-        .modal {
-          background: var(--surface-raised);
-          border: 1px solid var(--hairline);
+
+        .card-footer {
+          display: flex;
+          gap: 8px;
+          border-top: 1px solid var(--border-color);
+          padding-top: 12px;
+        }
+
+        .btn-sm {
+          padding: 6px 10px;
+          font-size: 12px;
           border-radius: 6px;
+        }
+
+        /* Matrix Table View */
+        .table-wrap {
+          max-width: 1200px;
+          margin: 0 auto;
+          overflow-x: auto;
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          background: var(--bg-card);
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          text-align: left;
+        }
+
+        th, td {
+          padding: 14px;
+          border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+          background: #111827;
+          color: var(--text-muted);
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        /* Modals */
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          z-index: 100;
+        }
+
+        .modal-content {
+          background: var(--bg-card);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
           padding: 24px;
           width: 100%;
-          max-width: 420px;
+          max-width: 440px;
         }
-        .modal h2 {
-          font-family: 'Big Shoulders Display', sans-serif;
-          font-weight: 800;
+
+        .form-group {
+          margin-bottom: 16px;
+        }
+
+        .form-group label {
+          display: block;
+          font-size: 12px;
+          color: var(--text-muted);
+          margin-bottom: 6px;
           text-transform: uppercase;
-          font-size: 20px;
-          margin: 0 0 16px;
-          color: var(--brass);
         }
-        .field { margin-bottom: 14px; }
-        .field label {
-          display: block; font-family: 'IBM Plex Mono', monospace;
-          font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
-          color: var(--ink-dim); margin-bottom: 6px;
-        }
-        .field input, .field textarea {
-          width: 100%; background: var(--bg-void); border: 1px solid var(--hairline);
-          color: var(--ink); padding: 9px 10px; border-radius: 3px;
-          font-family: 'IBM Plex Mono', monospace; font-size: 13px;
-        }
-        .field textarea { min-height: 90px; resize: vertical; }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
-        .hint { font-size: 11px; color: var(--ink-dim); margin-top: 6px; line-height: 1.5; }
-        .error-box {
-          background: rgba(193,68,60,0.12); border: 1px solid var(--rust);
-          color: var(--rust); font-size: 11px; font-family: 'IBM Plex Mono', monospace;
-          padding: 8px 10px; border-radius: 3px; margin-top: 10px;
-        }
-        .success-box {
-          background: rgba(212,167,61,0.12); border: 1px solid var(--brass);
-          color: var(--brass); font-size: 11px; font-family: 'IBM Plex Mono', monospace;
-          padding: 8px 10px; border-radius: 3px; margin-top: 10px;
+
+        .form-group input, .form-group textarea {
+          width: 100%;
+          padding: 10px;
+          background: var(--bg-main);
+          border: 1px solid var(--border-color);
+          border-radius: 8px;
+          color: var(--text-main);
+          box-sizing: border-box;
         }
       `}</style>
 
-      <div className="masthead">
-        <div>
-          <h1>Allowlist Ledger — Manifest</h1>
-          <div className="sub">
-            {wallets.length} wallet{wallets.length !== 1 ? "s" : ""} × {projects.length} project
-            {projects.length !== 1 ? "s" : ""} tracked
-          </div>
+      {/* Main Header */}
+      <div className="header">
+        <div className="header-titles">
+          <h1>Allowlist Ledger</h1>
+          <p>
+            Tracking {wallets.length} wallet{wallets.length !== 1 ? "s" : ""} across {projects.length} project
+            {projects.length !== 1 ? "s" : ""}
+          </p>
         </div>
-        <div className="toolbar">
+        <div className="header-actions">
           <button className="btn" onClick={() => setShowAddWallet(true)}>
             + Add Wallet
           </button>
-          <button className="btn primary" onClick={() => setShowAddProject(true)}>
+          <button className="btn btn-primary" onClick={() => setShowAddProject(true)}>
             + Add Project
           </button>
         </div>
       </div>
 
-      <div className="matrix-wrap">
-        {wallets.length === 0 || projects.length === 0 ? (
-          <div className="empty-state">
-            Add at least one wallet and one project to start the manifest.
-            <br />
-            Click a stamp to cycle it manually — dashed grey means unchecked.
-          </div>
-        ) : (
+      {/* Controls Bar */}
+      <div className="controls-bar">
+        <input
+          type="text"
+          className="search-input"
+          placeholder="Filter projects..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <div className="view-toggle">
+          <button
+            className={`toggle-btn ${viewMode === "cards" ? "active" : ""}`}
+            onClick={() => setViewMode("cards")}
+          >
+            Cards
+          </button>
+          <button
+            className={`toggle-btn ${viewMode === "table" ? "active" : ""}`}
+            onClick={() => setViewMode("table")}
+          >
+            Matrix
+          </button>
+        </div>
+      </div>
+
+      {/* CARDS VIEW (Mobile optimized) */}
+      {viewMode === "cards" && (
+        <div className="cards-grid">
+          {filteredProjects.map((p) => (
+            <div key={p.id} className="project-card">
+              <div className="card-header">
+                <div>
+                  <h3 className="card-title">{p.name}</h3>
+                 {/* Example for Card Display */}
+                  <div className="card-date">
+                    📅 {p.mintDate ? new Date(p.mintDate).toLocaleString([], {
+                        dateStyle: 'short',
+                        timeStyle: 'short'
+                      }) : "TBD"}
+                  </div>
+                </div>
+                <button
+                  className="btn btn-sm"
+                  style={{ color: "#ef4444", background: "transparent", border: "none" }}
+                  onClick={() => removeProject(p.id)}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="wallet-list">
+                {wallets.map((w) => (
+                  <div key={w.id} className="wallet-row">
+                    <div className="wallet-info">
+                      <span className="wallet-name">{w.label || "Unlabeled"}</span>
+                      <span className="wallet-addr-text">{shortAddr(w.address)}</span>
+                    </div>
+                    <StatusBadge
+                      status={getStatus(w.id, p.id)}
+                      onClick={() => cycleStatus(w.id, p.id)}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="card-footer">
+                {p.sourceUrl && (
+                  <button className="btn btn-sm" onClick={() => setCheckModalProject(p)}>
+                    Auto Check
+                  </button>
+                )}
+                {p.mintDate && (
+                  <button className="btn btn-sm" onClick={() => downloadICS(p)}>
+                    Add Calendar
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* MATRIX TABLE VIEW (Desktop optimized) */}
+      {viewMode === "table" && (
+        <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Project</th>
                 {wallets.map((w) => (
-                  <th key={w.id} className="wallet-col-head">
-                    <div className="proj-head-name">{w.label || "Unlabeled"}</div>
-                    <div className="proj-head-date">{shortAddr(w.address)}</div>
-                    <div className="proj-actions">
-                      <button className="icon-btn" onClick={() => removeWallet(w.id)}>
-                        remove
-                      </button>
+                  <th key={w.id}>
+                    <div>{w.label || "Unlabeled"}</div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                      {shortAddr(w.address)}
                     </div>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {sortedProjects.map((p) => (
+              {filteredProjects.map((p) => (
                 <tr key={p.id}>
-                  <td className="proj-row-head">
-                    <span className="wallet-label">{p.name}</span>
-                    <br />
-                    <span className="wallet-addr">
-                      {p.mintDate ? new Date(p.mintDate).toLocaleDateString() : "no mint date"}
-                    </span>
-                    {p.sourceUrl && (
-                      <button
-                        className="icon-btn"
-                        style={{ display: "block", marginTop: 4 }}
-                        onClick={() => setCheckModalProject(p)}
-                      >
-                        check all
-                      </button>
-                    )}
-                    {p.mintDate && (
-                      <button
-                        className="icon-btn"
-                        style={{ display: "block", marginTop: 4 }}
-                        onClick={() => downloadICS(p)}
-                      >
-                        add to calendar
-                      </button>
-                    )}
-                    <button className="row-remove" onClick={() => removeProject(p.id)} title="Remove project">
-                      ×
-                    </button>
+                  <td>
+                    <strong>{p.name}</strong>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.mintDate || "No date"}</div>
                   </td>
                   {wallets.map((w) => (
-                    <td key={w.id} className="proj-col">
-                      <Stamp status={getStatus(w.id, p.id)} onClick={() => cycleStatus(w.id, p.id)} />
+                    <td key={w.id}>
+                      <StatusBadge
+                        status={getStatus(w.id, p.id)}
+                        onClick={() => cycleStatus(w.id, p.id)}
+                      />
                     </td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
+      {/* Add Wallet Modal */}
       {showAddWallet && (
-        <AddWalletModal onClose={() => setShowAddWallet(false)} onAdd={addWallet} />
+        <div className="modal-overlay" onClick={() => setShowAddWallet(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Add Wallet</h3>
+            <div className="form-group">
+              <label>Label</label>
+              <input id="w-label" placeholder="e.g. Main Vault" />
+            </div>
+            <div className="form-group">
+              <label>Address</label>
+              <input id="w-addr" placeholder="0x..." />
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className="btn" onClick={() => setShowAddWallet(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  const label = document.getElementById("w-label").value;
+                  const addr = document.getElementById("w-addr").value;
+                  if (addr) addWallet(addr, label);
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
       )}
+
+      {/* Add Project Modal */}
       {showAddProject && (
-        <AddProjectModal onClose={() => setShowAddProject(false)} onAdd={addProject} />
+          <div className="modal-overlay" onClick={() => setShowAddProject(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3>Add Project</h3>
+              <div className="form-group">
+                <label>Project Name</label>
+                <input id="p-name" placeholder="e.g. Pudgy Penguins" />
+              </div>
+              <div className="form-group">
+                <label>Mint Date & Time</label>
+                {/* Changed from 'date' to 'datetime-local' */}
+                <input id="p-date" type="datetime-local" />
+              </div>
+              <div className="form-group">
+                <label>Source URL (Optional)</label>
+                <input id="p-url" placeholder="https://..." />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button className="btn" onClick={() => setShowAddProject(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    const name = document.getElementById("p-name").value;
+                    const date = document.getElementById("p-date").value;
+                    const url = document.getElementById("p-url").value;
+                    if (name) addProject(name, date, url);
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
       )}
-      {checkModalProject && (
-        <CheckAllModal
-          project={checkModalProject}
-          onClose={() => setCheckModalProject(null)}
-          onApply={(addresses) => {
-            applyBulkResult(checkModalProject.id, addresses);
-            setCheckModalProject(null);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function AddWalletModal({ onClose, onAdd }) {
-  const [address, setAddress] = useState("");
-  const [label, setLabel] = useState("");
-  const [connectStatus, setConnectStatus] = useState("idle"); // idle | connecting | error | connected
-  const [connectError, setConnectError] = useState("");
-
-  const hasProvider = typeof window !== "undefined" && Boolean(window.ethereum);
-
-  async function connectWallet() {
-    if (!hasProvider) {
-      setConnectStatus("error");
-      setConnectError("No wallet extension found. Install MetaMask, Rabby, or similar.");
-      return;
-    }
-    setConnectStatus("connecting");
-    setConnectError("");
-    try {
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      if (!accounts || accounts.length === 0) {
-        throw new Error("No account returned");
-      }
-      setAddress(accounts[0]);
-      setConnectStatus("connected");
-    } catch (err) {
-      setConnectStatus("error");
-      // 4001 is MetaMask's "user rejected the request" code
-      setConnectError(
-        err.code === 4001 ? "Connection request was rejected." : err.message || "Connection failed."
-      );
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Add Wallet</h2>
-
-        <button className="btn primary" style={{ width: "100%", marginBottom: 14 }} onClick={connectWallet} disabled={connectStatus === "connecting"}>
-          {connectStatus === "connecting" ? "Connecting…" : "🦊 Connect Wallet"}
-        </button>
-        {connectStatus === "error" && <div className="error-box" style={{ marginBottom: 14 }}>{connectError}</div>}
-        {connectStatus === "connected" && (
-          <div className="success-box" style={{ marginBottom: 14 }}>
-            Connected — address filled in below. Switch accounts in your wallet extension
-            before reconnecting to add a different one.
-          </div>
-        )}
-
-        <div className="hint" style={{ marginBottom: 14 }}>
-          Or enter an address manually — useful for watch-only wallets or hardware wallets
-          not currently connected.
-        </div>
-
-        <div className="field">
-          <label>Address</label>
-          <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="0x..." />
-        </div>
-        <div className="field">
-          <label>Label</label>
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Main, Farming #2" />
-        </div>
-        <div className="modal-actions">
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button
-            className="btn primary"
-            disabled={!address.trim()}
-            onClick={() => onAdd(address, label)}
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AddProjectModal({ onClose, onAdd }) {
-  const [name, setName] = useState("");
-  const [mintDate, setMintDate] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Add Project</h2>
-        <div className="field">
-          <label>Project name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Nocturne Genesis" />
-        </div>
-        <div className="field">
-          <label>Mint date (optional)</label>
-          <input type="date" value={mintDate} onChange={(e) => setMintDate(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Published allowlist URL (optional)</label>
-          <input
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            placeholder="Raw JSON/CSV of addresses"
-          />
-          <div className="hint">
-            If the project publishes an open list (GitHub gist, IPFS, etc), paste the raw
-            file URL here to unlock "check all" bulk matching. Leave blank to track this
-            project manually, like today.
-          </div>
-        </div>
-        <div className="modal-actions">
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn primary" disabled={!name.trim()} onClick={() => onAdd(name, mintDate, sourceUrl)}>
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CheckAllModal({ project, onClose, onApply }) {
-  const [pastedList, setPastedList] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | loading | error | success
-  const [errorMsg, setErrorMsg] = useState("");
-  const [fetchedCount, setFetchedCount] = useState(0);
-
-  async function tryFetchSource() {
-    setStatus("loading");
-    setErrorMsg("");
-    try {
-      const proxyUrl = `/api/fetch-list?url=${encodeURIComponent(project.sourceUrl)}`;
-      const res = await fetch(proxyUrl);
-      const contentType = res.headers.get("content-type") || "";
-
-      if (!res.ok) {
-        // Proxy returns JSON error bodies on failure
-        const body = contentType.includes("application/json") ? await res.json() : null;
-        throw new Error(body?.error || `Proxy responded ${res.status}`);
-      }
-
-      const text = await res.text();
-      const addresses = parseAddressList(text);
-      if (addresses.length === 0) throw new Error("No addresses found in response");
-      setFetchedCount(addresses.length);
-      setStatus("success");
-      onApply(addresses);
-    } catch (err) {
-      setStatus("error");
-      setErrorMsg(`${err.message}. You can paste the list manually below instead.`);
-    }
-  }
-
-  function applyPasted() {
-    const addresses = parseAddressList(pastedList);
-    if (addresses.length === 0) {
-      setStatus("error");
-      setErrorMsg("Couldn't find any 0x addresses in the pasted text.");
-      return;
-    }
-    onApply(addresses);
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Check All — {project.name}</h2>
-        <div className="hint" style={{ marginBottom: 14 }}>
-          Source: <span style={{ color: "var(--ink)" }}>{project.sourceUrl}</span>
-        </div>
-        <button className="btn primary" onClick={tryFetchSource} disabled={status === "loading"}>
-          {status === "loading" ? "Fetching…" : "Fetch & match automatically"}
-        </button>
-        {status === "error" && <div className="error-box">{errorMsg}</div>}
-        {status === "success" && (
-          <div className="success-box">Matched against {fetchedCount} published addresses.</div>
-        )}
-
-        <div className="field" style={{ marginTop: 18 }}>
-          <label>Or paste the list manually</label>
-          <textarea
-            value={pastedList}
-            onChange={(e) => setPastedList(e.target.value)}
-            placeholder="Paste JSON array or comma/newline separated addresses"
-          />
-          <div className="hint">
-            Use this if the fetch above fails, or if the project's checker is gated and you
-            copied the list some other way.
-          </div>
-        </div>
-        <div className="modal-actions">
-          <button className="btn" onClick={onClose}>Close</button>
-          <button className="btn primary" disabled={!pastedList.trim()} onClick={applyPasted}>
-            Apply pasted list
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
