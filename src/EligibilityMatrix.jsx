@@ -1,4 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
+import { CiEdit } from "react-icons/ci";
+import { FaCalendarDays } from "react-icons/fa6";
+
 
 const STORAGE = {
   wallets: "ledger:wallets",
@@ -22,34 +25,10 @@ function shortAddr(addr) {
   return addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
 }
 
-function normalize(addr) {
-  return (addr || "").trim().toLowerCase();
-}
-
-function parseAddressList(raw) {
-  const text = raw.trim();
-  if (!text) return [];
-  try {
-    const json = JSON.parse(text);
-    if (Array.isArray(json)) {
-      return json
-        .map((item) => (typeof item === "string" ? item : item?.address || item?.wallet || ""))
-        .map(normalize)
-        .filter(Boolean);
-    }
-  } catch {}
-  return text
-    .split(/[\n,]/)
-    .map((s) => s.trim())
-    .filter((s) => s.startsWith("0x"))
-    .map(normalize);
-}
-
 function buildICS(project) {
   if (!project.mintDate) return "";
 
   const startDate = new Date(project.mintDate);
-  // Default to 1 hour event duration
   const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
 
   const formatICSDate = (d) =>
@@ -74,7 +53,7 @@ function buildICS(project) {
     "BEGIN:VALARM",
     "ACTION:DISPLAY",
     "DESCRIPTION:Mint starting in 15 minutes!",
-    "TRIGGER:-PT15M", // 15-minute alert
+    "TRIGGER:-PT15M",
     "END:VALARM",
     "END:VEVENT",
     "END:VCALENDAR",
@@ -83,6 +62,7 @@ function buildICS(project) {
 
 function downloadICS(project) {
   const ics = buildICS(project);
+  if (!ics) return;
   const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -95,9 +75,9 @@ function downloadICS(project) {
 }
 
 const STATUS_CONFIG = {
-  eligible: { label: "Eligible", bg: "rgba(34, 197, 94, 0.15)", color: "#4ade80", border: "#22c55e" },
-  not_eligible: { label: "Not Eligible", bg: "rgba(239, 68, 68, 0.15)", color: "#f87171", border: "#ef4444" },
-  unchecked: { label: "Unchecked", bg: "rgba(148, 163, 184, 0.1)", color: "#94a3b8", border: "#475569" },
+  eligible: { label: "Eligible", bg: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", border: "rgba(56, 189, 248, 0.3)" },
+  not_eligible: { label: "Not Eligible", bg: "rgba(244, 63, 94, 0.12)", color: "#fb7185", border: "rgba(244, 63, 94, 0.3)" },
+  unchecked: { label: "Unchecked", bg: "rgba(148, 163, 184, 0.08)", color: "#94a3b8", border: "rgba(148, 163, 184, 0.2)" },
 };
 
 function StatusBadge({ status, onClick }) {
@@ -111,7 +91,7 @@ function StatusBadge({ status, onClick }) {
         color: cfg.color,
         borderColor: cfg.border,
       }}
-      title="Click to change status"
+      title="Click to cycle status"
     >
       <span className="dot" style={{ backgroundColor: cfg.color }} />
       {cfg.label}
@@ -119,16 +99,17 @@ function StatusBadge({ status, onClick }) {
   );
 }
 
-export default function EligibilityMatrix() {
+export default function AllowlistLedgerApp() {
+  const [currentPage, setCurrentPage] = useState("app");
   const [wallets, setWallets] = useState(() => load(STORAGE.wallets, []));
   const [projects, setProjects] = useState(() => load(STORAGE.projects, []));
   const [eligibility, setEligibility] = useState(() => load(STORAGE.eligibility, {}));
-  const [viewMode, setViewMode] = useState("cards"); // 'cards' | 'table'
+  const [viewMode, setViewMode] = useState("cards");
   const [searchQuery, setSearchQuery] = useState("");
 
   const [showAddWallet, setShowAddWallet] = useState(false);
   const [showAddProject, setShowAddProject] = useState(false);
-  const [checkModalProject, setCheckModalProject] = useState(null);
+  const [editingProject, setEditingProject] = useState(null); // Stores project being edited
 
   useEffect(() => localStorage.setItem(STORAGE.wallets, JSON.stringify(wallets)), [wallets]);
   useEffect(() => localStorage.setItem(STORAGE.projects, JSON.stringify(projects)), [projects]);
@@ -164,27 +145,21 @@ export default function EligibilityMatrix() {
     setShowAddProject(false);
   }
 
+  function updateProject(id, name, mintDate, sourceUrl) {
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, name: name.trim(), mintDate, sourceUrl: sourceUrl.trim() } : p
+      )
+    );
+    setEditingProject(null);
+  }
+
   function removeWallet(id) {
     setWallets((prev) => prev.filter((w) => w.id !== id));
   }
 
   function removeProject(id) {
     setProjects((prev) => prev.filter((p) => p.id !== id));
-  }
-
-  function applyBulkResult(projectId, matchedAddresses) {
-    const matchedSet = new Set(matchedAddresses.map(normalize));
-    setEligibility((prev) => {
-      const next = { ...prev };
-      wallets.forEach((w) => {
-        next[cellKey(w.id, projectId)] = {
-          status: matchedSet.has(normalize(w.address)) ? "eligible" : "not_eligible",
-          method: "auto",
-          checkedAt: new Date().toISOString(),
-        };
-      });
-      return next;
-    });
   }
 
   const filteredProjects = useMemo(() => {
@@ -200,35 +175,116 @@ export default function EligibilityMatrix() {
   return (
     <div className="app-container">
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
         :root {
-          --bg-main: #0f172a;
-          --bg-card: #1e293b;
-          --bg-card-hover: #334155;
-          --border-color: #334155;
+          --bg-main: #030712;
+          --bg-surface: rgba(15, 23, 42, 0.65);
+          --bg-surface-hover: rgba(30, 41, 59, 0.8);
+          --border-color: rgba(255, 255, 255, 0.08);
+          --border-highlight: rgba(56, 189, 248, 0.3);
           --text-main: #f8fafc;
           --text-muted: #94a3b8;
-          --accent: #6366f1;
-          --accent-hover: #4f46e5;
+          --accent: #38bdf8;
+          --accent-glow: rgba(56, 189, 248, 0.35);
         }
 
         .app-container {
           min-height: 100vh;
           background-color: var(--bg-main);
           color: var(--text-main);
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          padding: 20px;
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          position: relative;
+          overflow: hidden;
           box-sizing: border-box;
+        }
+
+        .font-mono {
+          font-family: 'JetBrains Mono', monospace;
+        }
+
+        .bg-grid {
+          position: absolute;
+          inset: 0;
+          background-image: linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+          background-size: 80px 100%;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .navbar {
+          position: relative;
+          z-index: 10;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 24px 40px;
+          max-width: 1280px;
+          margin: 0 auto;
+        }
+
+        .brand-logo {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 700;
+          font-size: 20px;
+          letter-spacing: -0.02em;
+          cursor: pointer;
+        }
+
+        .brand-icon {
+          width: 22px;
+          height: 22px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+
+        .brand-icon-bar {
+          height: 5px;
+          background: #38bdf8;
+          border-radius: 2px;
+        }
+
+        .brand-icon-bar:nth-child(2) {
+          width: 75%;
+        }
+
+        .btn-pill {
+          background: #38bdf8;
+          color: #030712;
+          border: none;
+          padding: 8px 20px;
+          border-radius: 30px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .btn-pill:hover {
+          background: #7dd3fc;
+          box-shadow: 0 0 28px rgba(56, 189, 248, 0.5);
+        }
+
+        .main-wrapper {
+          position: relative;
+          z-index: 5;
+          max-width: 1080px;
+          margin: 0 auto;
+          padding: 32px 20px;
         }
 
         .header {
           display: flex;
           flex-direction: column;
           gap: 16px;
-          max-width: 1200px;
-          margin: 0 auto 24px auto;
+          margin-bottom: 28px;
         }
 
-        @media (min-width: 768px) {
+        @media (min-width: 640px) {
           .header {
             flex-direction: row;
             align-items: center;
@@ -237,76 +293,74 @@ export default function EligibilityMatrix() {
         }
 
         .header-titles h1 {
-          font-size: 24px;
+          font-size: 22px;
           font-weight: 700;
-          margin: 0 0 4px 0;
+          margin: 0 0 6px 0;
           letter-spacing: -0.02em;
         }
 
         .header-titles p {
           color: var(--text-muted);
-          font-size: 14px;
+          font-size: 13px;
           margin: 0;
         }
 
         .header-actions {
           display: flex;
-          flex-wrap: wrap;
           gap: 10px;
           align-items: center;
         }
 
         .btn {
-          background-color: var(--bg-card);
+          background-color: var(--bg-surface);
           color: var(--text-main);
           border: 1px solid var(--border-color);
-          padding: 10px 16px;
+          padding: 8px 14px;
           border-radius: 8px;
           font-weight: 500;
-          font-size: 14px;
+          font-size: 13px;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: all 0.15s ease;
           display: inline-flex;
           align-items: center;
           gap: 6px;
+          backdrop-filter: blur(8px);
         }
 
         .btn:hover {
-          background-color: var(--bg-card-hover);
-        }
-
-        .btn-primary {
-          background-color: var(--accent);
-          border-color: var(--accent);
-        }
-
-        .btn-primary:hover {
-          background-color: var(--accent-hover);
+          background-color: var(--bg-surface-hover);
+          border-color: var(--border-highlight);
         }
 
         .controls-bar {
-          max-width: 1200px;
-          margin: 0 auto 24px auto;
           display: flex;
           gap: 12px;
           justify-content: space-between;
           align-items: center;
+          margin-bottom: 16px;
         }
 
         .search-input {
-          background: var(--bg-card);
+          background: var(--bg-surface);
           border: 1px solid var(--border-color);
           color: var(--text-main);
           padding: 8px 14px;
           border-radius: 8px;
-          font-size: 14px;
+          font-size: 13px;
           width: 100%;
-          max-width: 320px;
+          max-width: 280px;
+          outline: none;
+          transition: border-color 0.15s ease;
+          backdrop-filter: blur(8px);
+        }
+
+        .search-input:focus {
+          border-color: var(--accent);
         }
 
         .view-toggle {
           display: flex;
-          background: var(--bg-card);
+          background: var(--bg-surface);
           padding: 3px;
           border-radius: 8px;
           border: 1px solid var(--border-color);
@@ -316,8 +370,8 @@ export default function EligibilityMatrix() {
           background: transparent;
           border: none;
           color: var(--text-muted);
-          padding: 6px 12px;
-          font-size: 13px;
+          padding: 5px 12px;
+          font-size: 12px;
           font-weight: 500;
           border-radius: 6px;
           cursor: pointer;
@@ -325,42 +379,47 @@ export default function EligibilityMatrix() {
 
         .toggle-btn.active {
           background: var(--accent);
-          color: white;
+          color: #030712;
+          font-weight: 600;
         }
 
-        /* Card List Styles (Mobile Friendly) */
         .cards-grid {
           display: grid;
           grid-template-columns: 1fr;
           gap: 16px;
-          max-width: 1200px;
-          margin: 0 auto;
         }
 
-        @media (min-width: 768px) {
+        @media (min-width: 640px) {
           .cards-grid {
-            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
           }
         }
 
         .project-card {
-          background: var(--bg-card);
+          background: var(--bg-surface);
           border: 1px solid var(--border-color);
           border-radius: 12px;
-          padding: 18px;
+          padding: 16px;
           display: flex;
           flex-direction: column;
-          gap: 14px;
+          justify-content: space-between;
+          backdrop-filter: blur(8px);
+          transition: border-color 0.15s ease;
+        }
+
+        .project-card:hover {
+          border-color: var(--border-highlight);
         }
 
         .card-header {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
+          margin-bottom: 12px;
         }
 
         .card-title {
-          font-size: 18px;
+          font-size: 15px;
           font-weight: 600;
           margin: 0 0 4px 0;
         }
@@ -368,26 +427,28 @@ export default function EligibilityMatrix() {
         .card-date {
           font-size: 12px;
           color: var(--text-muted);
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .card-date:hover {
+          color: var(--accent);
         }
 
         .wallet-list {
           display: flex;
           flex-direction: column;
-          gap: 10px;
-          border-top: 1px solid var(--border-color);
-          padding-top: 12px;
+          gap: 8px;
+          margin: 12px 0;
         }
 
         .wallet-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 8px;
-        }
-
-        .wallet-info {
-          display: flex;
-          flex-direction: column;
+          padding: 6px 0;
         }
 
         .wallet-name {
@@ -398,14 +459,14 @@ export default function EligibilityMatrix() {
         .wallet-addr-text {
           font-size: 11px;
           color: var(--text-muted);
-          font-family: monospace;
+          margin-top: 1px;
         }
 
         .status-badge {
           border: 1px solid;
           padding: 4px 10px;
           border-radius: 20px;
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 500;
           cursor: pointer;
           display: inline-flex;
@@ -415,36 +476,36 @@ export default function EligibilityMatrix() {
         }
 
         .status-badge:active {
-          transform: scale(0.95);
+          transform: scale(0.96);
         }
 
         .dot {
-          width: 6px;
-          height: 6px;
+          width: 5px;
+          height: 5px;
           border-radius: 50%;
         }
 
         .card-footer {
           display: flex;
-          gap: 8px;
+          justify-content: space-between;
+          align-items: center;
           border-top: 1px solid var(--border-color);
           padding-top: 12px;
+          margin-top: 8px;
         }
 
         .btn-sm {
-          padding: 6px 10px;
-          font-size: 12px;
+          padding: 5px 10px;
+          font-size: 11px;
           border-radius: 6px;
         }
 
-        /* Matrix Table View */
         .table-wrap {
-          max-width: 1200px;
-          margin: 0 auto;
           overflow-x: auto;
           border: 1px solid var(--border-color);
           border-radius: 12px;
-          background: var(--bg-card);
+          background: var(--bg-surface);
+          backdrop-filter: blur(8px);
         }
 
         table {
@@ -454,24 +515,23 @@ export default function EligibilityMatrix() {
         }
 
         th, td {
-          padding: 14px;
+          padding: 12px 16px;
           border-bottom: 1px solid var(--border-color);
         }
 
         th {
-          background: #111827;
+          background: rgba(0, 0, 0, 0.2);
           color: var(--text-muted);
-          font-size: 12px;
+          font-size: 11px;
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
 
-        /* Modals */
         .modal-overlay {
           position: fixed;
           inset: 0;
           background: rgba(0, 0, 0, 0.7);
-          backdrop-filter: blur(4px);
+          backdrop-filter: blur(6px);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -480,260 +540,284 @@ export default function EligibilityMatrix() {
         }
 
         .modal-content {
-          background: var(--bg-card);
+          background: #090d16;
           border: 1px solid var(--border-color);
           border-radius: 12px;
-          padding: 24px;
+          padding: 20px;
           width: 100%;
-          max-width: 440px;
+          max-width: 400px;
+        }
+
+        .modal-content h3 {
+          margin: 0 0 16px 0;
+          font-size: 16px;
         }
 
         .form-group {
-          margin-bottom: 16px;
+          margin-bottom: 14px;
         }
 
         .form-group label {
           display: block;
-          font-size: 12px;
+          font-size: 11px;
           color: var(--text-muted);
           margin-bottom: 6px;
           text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
 
-        .form-group input, .form-group textarea {
+        .form-group input {
           width: 100%;
-          padding: 10px;
+          padding: 8px 12px;
           background: var(--bg-main);
           border: 1px solid var(--border-color);
-          border-radius: 8px;
+          border-radius: 6px;
           color: var(--text-main);
           box-sizing: border-box;
+          font-size: 13px;
+          outline: none;
+        }
+
+        .form-group input:focus {
+          border-color: var(--accent);
         }
       `}</style>
 
-      {/* Main Header */}
-      <div className="header">
-        <div className="header-titles">
-          <h1>Allowlist Ledger</h1>
-          <p>
-            Tracking {wallets.length} wallet{wallets.length !== 1 ? "s" : ""} across {projects.length} project
-            {projects.length !== 1 ? "s" : ""}
-          </p>
+      <div className="bg-grid" />
+
+      <nav className="navbar">
+        <div className="brand-logo">
+          <div className="brand-icon">
+            <div className="brand-icon-bar" />
+            <div className="brand-icon-bar" />
+            <div className="brand-icon-bar" />
+          </div>
+          <span>Allowlist Ledger</span>
         </div>
-        <div className="header-actions">
-          <button className="btn" onClick={() => setShowAddWallet(true)}>
-            + Add Wallet
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowAddProject(true)}>
-            + Add Project
-          </button>
-        </div>
-      </div>
+      </nav>
 
-      {/* Quick Wallet Manager Bar */}
-<div style={{ maxWidth: 1200, margin: "0 auto 16px auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-  {wallets.map((w) => (
-    <div
-      key={w.id}
-      style={{
-        background: "var(--bg-card)",
-        border: "1px solid var(--border-color)",
-        borderRadius: 20,
-        padding: "4px 12px",
-        fontSize: 12,
-        display: "flex",
-        alignItems: "center",
-        gap: 6
-      }}
-    >
-      <span>{w.label || shortAddr(w.address)}</span>
-      <button
-        onClick={() => removeWallet(w.id)}
-        style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0 }}
-      >
-        ✕
-      </button>
-    </div>
-  ))}
-</div>
-
-      {/* Controls Bar */}
-      <div className="controls-bar">
-        <input
-          type="text"
-          className="search-input"
-          placeholder="Filter projects..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        <div className="view-toggle">
-          <button
-            className={`toggle-btn ${viewMode === "cards" ? "active" : ""}`}
-            onClick={() => setViewMode("cards")}
-          >
-            Cards
-          </button>
-          <button
-            className={`toggle-btn ${viewMode === "table" ? "active" : ""}`}
-            onClick={() => setViewMode("table")}
-          >
-            Matrix
-          </button>
-        </div>
-      </div>
-
-      {/* CARDS VIEW (Mobile optimized) */}
-      {viewMode === "cards" && (
-        <div className="cards-grid">
-          {filteredProjects.map((p) => (
-            <div key={p.id} className="project-card">
-              <div className="card-header">
-                <div>
-                  <h3 className="card-title">{p.name}</h3>
-                 {/* Example for Card Display */}
-                  <div className="card-date">
-                    📅 {p.mintDate ? new Date(p.mintDate).toLocaleString([], {
-                        dateStyle: 'short',
-                        timeStyle: 'short'
-                      }) : "TBD"}
-                  </div>
-                </div>
-                <button
-                  className="btn btn-sm"
-                  style={{ color: "#ef4444", background: "transparent", border: "none" }}
-                  onClick={() => removeProject(p.id)}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="wallet-list">
-                {wallets.map((w) => (
-                  <div key={w.id} className="wallet-row">
-                    <div className="wallet-info">
-                      <span className="wallet-name">{w.label || "Unlabeled"}</span>
-                      <span className="wallet-addr-text">{shortAddr(w.address)}</span>
-                    </div>
-                    <StatusBadge
-                      status={getStatus(w.id, p.id)}
-                      onClick={() => cycleStatus(w.id, p.id)}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div className="card-footer">
-                {p.sourceUrl && (
-                  <button className="btn btn-sm" onClick={() => setCheckModalProject(p)}>
-                    Auto Check
-                  </button>
-                )}
-                {p.mintDate && (
-                  <button className="btn btn-sm" onClick={() => downloadICS(p)}>
-                    Add Calendar
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* MATRIX TABLE VIEW (Desktop optimized) */}
-      {viewMode === "table" && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Project</th>
-                {wallets.map((w) => (
-                  <th key={w.id}>
-                    <div>{w.label || "Unlabeled"}</div>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                      {shortAddr(w.address)}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProjects.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <strong>{p.name}</strong>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.mintDate || "No date"}</div>
-                  </td>
-                  {wallets.map((w) => (
-                    <td key={w.id}>
-                      <StatusBadge
-                        status={getStatus(w.id, p.id)}
-                        onClick={() => cycleStatus(w.id, p.id)}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Add Wallet Modal */}
-      {showAddWallet && (
-        <div className="modal-overlay" onClick={() => setShowAddWallet(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Add Wallet</h3>
-            <div className="form-group">
-              <label>Label</label>
-              <input id="w-label" placeholder="e.g. Main Vault" />
-            </div>
-            <div className="form-group">
-              <label>Address</label>
-              <input id="w-addr" placeholder="0x..." />
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button className="btn" onClick={() => setShowAddWallet(false)}>
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  const label = document.getElementById("w-label").value;
-                  const addr = document.getElementById("w-addr").value;
-                  if (addr) addWallet(addr, label);
-                }}
-              >
-                Save
-              </button>
-            </div>
+      <div className="main-wrapper">
+        <div className="header">
+          <div className="header-titles">
+            <h1>Allowlist Ledger</h1>
+            <p>
+              Tracking {wallets.length} wallet{wallets.length !== 1 ? "s" : ""} across {projects.length} project
+              {projects.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <div className="header-actions">
+            <button className="btn" onClick={() => setShowAddWallet(true)}>
+              + Wallet
+            </button>
+            <button className="btn-pill" onClick={() => setShowAddProject(true)}>
+              + Project
+            </button>
           </div>
         </div>
-      )}
 
-      {/* Add Project Modal */}
-      {showAddProject && (
+        <div className="controls-bar">
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Search projects..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <div className="view-toggle">
+            <button
+              className={`toggle-btn ${viewMode === "cards" ? "active" : ""}`}
+              onClick={() => setViewMode("cards")}
+            >
+              Cards
+            </button>
+            <button
+              className={`toggle-btn ${viewMode === "table" ? "active" : ""}`}
+              onClick={() => setViewMode("table")}
+            >
+              Matrix
+            </button>
+          </div>
+        </div>
+
+        {viewMode === "cards" && (
+          <div className="cards-grid">
+            {filteredProjects.map((p) => (
+              <div key={p.id} className="project-card">
+                <div>
+                  <div className="card-header">
+                    <div>
+                      <h3 className="card-title">{p.name}</h3>
+                      <div className="card-date font-mono" onClick={() => setEditingProject(p)} title="Click to update date">
+                        <FaCalendarDays className="text-[#38bdf8]"/>{" "}
+                        {p.mintDate
+                          ? new Date(p.mintDate).toLocaleString([], {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })
+                          : "TBD (Click to set)"} <CiEdit />
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-sm"
+                      style={{ color: "#fb7185", background: "transparent", border: "none" }}
+                      onClick={() => removeProject(p.id)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="wallet-list">
+                    {wallets.length > 0 ? (
+                      wallets.map((w) => (
+                        <div key={w.id} className="wallet-row">
+                          <div>
+                            <div className="wallet-name">{w.label || "Unlabeled"}</div>
+                            <div className="wallet-addr-text font-mono">{shortAddr(w.address)}</div>
+                          </div>
+                          <StatusBadge
+                            status={getStatus(w.id, p.id)}
+                            onClick={() => cycleStatus(w.id, p.id)}
+                          />
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ padding: "8px 0", fontSize: 12, color: "var(--text-muted)" }}>
+                        No wallets added yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="card-footer">
+                  <button className="btn btn-sm" onClick={() => setEditingProject(p)}>
+                    Edit
+                  </button>
+                  {p.mintDate && (
+                    <button className="btn btn-sm" onClick={() => downloadICS(p)}>
+                      + Calendar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {viewMode === "table" && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  {wallets.map((w) => (
+                    <th key={w.id}>
+                      <div>{w.label || "Unlabeled"}</div>
+                      <div className="font-mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                        {shortAddr(w.address)}
+                      </div>
+                    </th>
+                  ))}
+                  <th style={{ width: 60 }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProjects.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <strong>{p.name}</strong>
+                      <div
+                        className="font-mono card-date"
+                        style={{ fontSize: 11 }}
+                        onClick={() => setEditingProject(p)}
+                      >
+                        {p.mintDate
+                          ? new Date(p.mintDate).toLocaleString([], {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })
+                          : "TBD (Set date)"} ✏️
+                      </div>
+                    </td>
+                    {wallets.map((w) => (
+                      <td key={w.id}>
+                        <StatusBadge
+                          status={getStatus(w.id, p.id)}
+                          onClick={() => cycleStatus(w.id, p.id)}
+                        />
+                      </td>
+                    ))}
+                    <td>
+                      <button className="btn btn-sm" onClick={() => setEditingProject(p)}>
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* EDIT PROJECT MODAL */}
+        {editingProject && (
+          <div className="modal-overlay" onClick={() => setEditingProject(null)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3>Edit Project</h3>
+              <div className="form-group">
+                <label>Project Name</label>
+                <input id="edit-p-name" defaultValue={editingProject.name} />
+              </div>
+              <div className="form-group">
+                <label>Mint Date & Time</label>
+                <input id="edit-p-date" type="datetime-local" defaultValue={editingProject.mintDate || ""} />
+              </div>
+              <div className="form-group">
+                <label>Source URL (Optional)</label>
+                <input id="edit-p-url" defaultValue={editingProject.sourceUrl || ""} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+                <button className="btn" onClick={() => setEditingProject(null)}>
+                  Cancel
+                </button>
+                <button
+                  className="btn-pill"
+                  onClick={() => {
+                    const name = document.getElementById("edit-p-name").value;
+                    const date = document.getElementById("edit-p-date").value;
+                    const url = document.getElementById("edit-p-url").value;
+                    if (name) updateProject(editingProject.id, name, date, url);
+                  }}
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ADD PROJECT MODAL */}
+        {showAddProject && (
           <div className="modal-overlay" onClick={() => setShowAddProject(false)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <h3>Add Project</h3>
               <div className="form-group">
                 <label>Project Name</label>
-                <input id="p-name" placeholder="e.g. Pudgy Penguins" />
+                <input id="p-name" placeholder="e.g. Aero Genesis" />
               </div>
               <div className="form-group">
-                <label>Mint Date & Time</label>
-                {/* Changed from 'date' to 'datetime-local' */}
+                <label>Mint Date & Time (Leave empty if TBD)</label>
                 <input id="p-date" type="datetime-local" />
               </div>
               <div className="form-group">
                 <label>Source URL (Optional)</label>
                 <input id="p-url" placeholder="https://..." />
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
                 <button className="btn" onClick={() => setShowAddProject(false)}>
                   Cancel
                 </button>
                 <button
-                  className="btn btn-primary"
+                  className="btn-pill"
                   onClick={() => {
                     const name = document.getElementById("p-name").value;
                     const date = document.getElementById("p-date").value;
@@ -746,7 +830,40 @@ export default function EligibilityMatrix() {
               </div>
             </div>
           </div>
-      )}
+        )}
+
+        {/* ADD WALLET MODAL */}
+        {showAddWallet && (
+          <div className="modal-overlay" onClick={() => setShowAddWallet(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3>Add Wallet</h3>
+              <div className="form-group">
+                <label>Label</label>
+                <input id="w-label" placeholder="e.g. Main Vault" />
+              </div>
+              <div className="form-group">
+                <label>Address</label>
+                <input id="w-addr" className="font-mono" placeholder="0x..." />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+                <button className="btn" onClick={() => setShowAddWallet(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="btn-pill"
+                  onClick={() => {
+                    const label = document.getElementById("w-label").value;
+                    const addr = document.getElementById("w-addr").value;
+                    if (addr) addWallet(addr, label);
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
