@@ -787,7 +787,7 @@ export default function AllowlistLedgerApp() {
             </button>
           ) : (
             <button className="btn-pill btn-pill-secondary" onClick={() => setCurrentPage("landing")}>
-              ← Back to Overview
+              ← Back 
             </button>
           )}
         </div>
