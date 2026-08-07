@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from "react";
 import { CiEdit } from "react-icons/ci";
 import { FaCalendarDays } from "react-icons/fa6";
 
-
 const STORAGE = {
   wallets: "ledger:wallets",
   projects: "ledger:projects",
@@ -100,7 +99,7 @@ function StatusBadge({ status, onClick }) {
 }
 
 export default function AllowlistLedgerApp() {
-  const [currentPage, setCurrentPage] = useState("app");
+  const [currentPage, setCurrentPage] = useState("landing");
   const [wallets, setWallets] = useState(() => load(STORAGE.wallets, []));
   const [projects, setProjects] = useState(() => load(STORAGE.projects, []));
   const [eligibility, setEligibility] = useState(() => load(STORAGE.eligibility, {}));
@@ -109,7 +108,7 @@ export default function AllowlistLedgerApp() {
 
   const [showAddWallet, setShowAddWallet] = useState(false);
   const [showAddProject, setShowAddProject] = useState(false);
-  const [editingProject, setEditingProject] = useState(null); // Stores project being edited
+  const [editingProject, setEditingProject] = useState(null);
 
   useEffect(() => localStorage.setItem(STORAGE.wallets, JSON.stringify(wallets)), [wallets]);
   useEffect(() => localStorage.setItem(STORAGE.projects, JSON.stringify(projects)), [projects]);
@@ -212,13 +211,14 @@ export default function AllowlistLedgerApp() {
           z-index: 0;
         }
 
+        /* Navbar Header */
         .navbar {
           position: relative;
           z-index: 10;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 24px 40px;
+          padding: 24px 20px;
           max-width: 1280px;
           margin: 0 auto;
         }
@@ -251,6 +251,35 @@ export default function AllowlistLedgerApp() {
           width: 75%;
         }
 
+        .nav-links {
+          display: none;
+          gap: 32px;
+          align-items: center;
+        }
+
+        @media (min-width: 768px) {
+          .nav-links {
+            display: flex;
+          }
+        }
+
+        .nav-link {
+          color: var(--text-muted);
+          font-size: 13px;
+          text-decoration: none;
+          transition: color 0.2s;
+        }
+
+        .nav-link:hover {
+          color: var(--text-main);
+        }
+
+        .nav-actions {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
         .btn-pill {
           background: #38bdf8;
           color: #030712;
@@ -269,6 +298,110 @@ export default function AllowlistLedgerApp() {
           box-shadow: 0 0 28px rgba(56, 189, 248, 0.5);
         }
 
+        .btn-pill-secondary {
+          background: rgba(255, 255, 255, 0.05);
+          color: var(--text-main);
+          border: 1px solid var(--border-color);
+          box-shadow: none;
+        }
+
+        .btn-pill-secondary:hover {
+          background: rgba(255, 255, 255, 0.1);
+          box-shadow: none;
+        }
+
+        /* LANDING HERO SECTION */
+        .landing-hero {
+          position: relative;
+          z-index: 5;
+          max-width: 900px;
+          margin: 60px auto 0 auto;
+          text-align: center;
+          padding: 0 20px;
+        }
+
+        .hero-title {
+          font-size: 42px;
+          font-weight: 700;
+          line-height: 1.15;
+          letter-spacing: -0.03em;
+          margin-bottom: 20px;
+          color: #ffffff;
+        }
+
+        @media (min-width: 768px) {
+          .hero-title {
+            font-size: 60px;
+          }
+        }
+
+        .highlight-box {
+          border: 1px solid rgba(56, 189, 248, 0.4);
+          padding: 0 8px;
+          border-radius: 6px;
+          display: inline-block;
+        }
+
+        .highlight-text {
+          color: #38bdf8;
+        }
+
+        .hero-subtitle {
+          font-size: 15px;
+          color: var(--text-muted);
+          max-width: 580px;
+          margin: 0 auto 36px auto;
+          line-height: 1.6;
+          font-weight: 400;
+        }
+
+        /* Glowing Arch Horizon Effect */
+        .horizon-wrapper {
+          position: relative;
+          width: 100%;
+          max-width: 1100px;
+          margin: 20px auto 0 auto;
+          height: 280px;
+          overflow: hidden;
+          display: flex;
+          justify-content: center;
+        }
+
+        .horizon-arch {
+          position: absolute;
+          top: 60px;
+          width: 1200px;
+          height: 600px;
+          border-radius: 50%;
+          background: radial-gradient(circle at 50% 0%, #38bdf8 0%, #0284c7 25%, transparent 70%);
+          box-shadow: 0 -20px 80px rgba(56, 189, 248, 0.4);
+        }
+
+        .horizon-arch::after {
+          content: '';
+          position: absolute;
+          inset: 4px;
+          border-radius: 50%;
+          background: #030712;
+        }
+
+        .hero-cta-container {
+          position: relative;
+          z-index: 10;
+          margin-top: -160px;
+          text-align: center;
+          margin-bottom: 40px;
+        }
+
+        .trusted-text {
+          text-align: center;
+          font-size: 12px;
+          color: var(--text-muted);
+          letter-spacing: 0.05em;
+          margin-top: 40px;
+        }
+
+        /* APP DASHBOARD STYLES */
         .main-wrapper {
           position: relative;
           z-index: 5;
@@ -381,6 +514,49 @@ export default function AllowlistLedgerApp() {
           background: var(--accent);
           color: #030712;
           font-weight: 600;
+        }
+
+        .wallet-strip {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 24px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid var(--border-color);
+        }
+
+        .wallet-chip {
+          background: var(--bg-surface);
+          border: 1px solid var(--border-color);
+          border-radius: 20px;
+          padding: 4px 10px 4px 12px;
+          font-size: 12px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          backdrop-filter: blur(8px);
+        }
+
+        .wallet-chip-del {
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          padding: 0;
+          font-size: 13px;
+          line-height: 1;
+        }
+
+        .wallet-chip-del:hover {
+          color: #fb7185;
+        }
+
+        .empty-wallet-prompt {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 12px 0;
+          gap: 6px;
         }
 
         .cards-grid {
@@ -583,10 +759,12 @@ export default function AllowlistLedgerApp() {
         }
       `}</style>
 
+      {/* Grid Pattern overlay */}
       <div className="bg-grid" />
 
+      {/* Navbar */}
       <nav className="navbar">
-        <div className="brand-logo">
+        <div className="brand-logo" onClick={() => setCurrentPage("landing")}>
           <div className="brand-icon">
             <div className="brand-icon-bar" />
             <div className="brand-icon-bar" />
@@ -594,276 +772,381 @@ export default function AllowlistLedgerApp() {
           </div>
           <span>Allowlist Ledger</span>
         </div>
+
+        <div className="nav-links">
+          <a href="#features" className="nav-link" onClick={(e) => { e.preventDefault(); setCurrentPage("app"); }}>Features</a>
+          <a href="#matrix" className="nav-link" onClick={(e) => { e.preventDefault(); setCurrentPage("app"); }}>Eligibility Matrix</a>
+          <a href="#calendar" className="nav-link" onClick={(e) => { e.preventDefault(); setCurrentPage("app"); }}>Mint Sync</a>
+          <a href="#docs" className="nav-link" onClick={(e) => { e.preventDefault(); setCurrentPage("app"); }}>Docs</a>
+        </div>
+
+        <div className="nav-actions">
+          {currentPage === "landing" ? (
+            <button className="btn-pill" onClick={() => setCurrentPage("app")}>
+              Launch App
+            </button>
+          ) : (
+            <button className="btn-pill btn-pill-secondary" onClick={() => setCurrentPage("landing")}>
+              ← Back to Overview
+            </button>
+          )}
+        </div>
       </nav>
 
-      <div className="main-wrapper">
-        <div className="header">
-          <div className="header-titles">
-            <h1>Allowlist Ledger</h1>
-            <p>
-              Tracking {wallets.length} wallet{wallets.length !== 1 ? "s" : ""} across {projects.length} project
-              {projects.length !== 1 ? "s" : ""}
+      {/* LANDING PAGE VIEW */}
+      {currentPage === "landing" && (
+        <div>
+          <section className="landing-hero">
+            <h1 className="hero-title">
+              Multi-wallet <span className="highlight-box"><span className="highlight-text">allowlists</span></span> made<br />
+              <span className="highlight-text">effortless</span> for<br />
+              Web3 collectors
+            </h1>
+
+            <p className="hero-subtitle">
+              Track mint eligibility across all your wallets, sync key mint schedules directly to your calendar, and never miss an allowlist spot again.
             </p>
+          </section>
+
+          <div className="horizon-wrapper">
+            <div className="horizon-arch" />
           </div>
-          <div className="header-actions">
-            <button className="btn" onClick={() => setShowAddWallet(true)}>
-              + Wallet
+
+          <div className="hero-cta-container">
+            <button className="btn-pill" style={{ padding: "12px 32px", fontSize: 14 }} onClick={() => setCurrentPage("app")}>
+              Open Ledger Dashboard
             </button>
-            <button className="btn-pill" onClick={() => setShowAddProject(true)}>
-              + Project
-            </button>
+            <div className="trusted-text">
+              Built for collectors, degens, and Web3 teams
+            </div>
           </div>
         </div>
+      )}
 
-        <div className="controls-bar">
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search projects..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <div className="view-toggle">
-            <button
-              className={`toggle-btn ${viewMode === "cards" ? "active" : ""}`}
-              onClick={() => setViewMode("cards")}
-            >
-              Cards
-            </button>
-            <button
-              className={`toggle-btn ${viewMode === "table" ? "active" : ""}`}
-              onClick={() => setViewMode("table")}
-            >
-              Matrix
-            </button>
+      {/* APP DASHBOARD VIEW */}
+      {currentPage === "app" && (
+        <div className="main-wrapper">
+          <div className="header">
+            <div className="header-titles">
+              <h1>Allowlist Ledger</h1>
+              <p>
+                Tracking {wallets.length} wallet{wallets.length !== 1 ? "s" : ""} across {projects.length} project
+                {projects.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="header-actions">
+              <button className="btn" onClick={() => setShowAddWallet(true)}>
+                + Wallet
+              </button>
+              <button className="btn-pill" onClick={() => setShowAddProject(true)}>
+                + Project
+              </button>
+            </div>
           </div>
-        </div>
 
-        {viewMode === "cards" && (
-          <div className="cards-grid">
-            {filteredProjects.map((p) => (
-              <div key={p.id} className="project-card">
-                <div>
-                  <div className="card-header">
-                    <div>
-                      <h3 className="card-title">{p.name}</h3>
-                      <div className="card-date font-mono" onClick={() => setEditingProject(p)} title="Click to update date">
-                        <FaCalendarDays className="text-[#38bdf8]"/>{" "}
-                        {p.mintDate
-                          ? new Date(p.mintDate).toLocaleString([], {
-                              dateStyle: "short",
-                              timeStyle: "short",
-                            })
-                          : "TBD (Click to set)"} <CiEdit />
+          {/* WALLET STRIP (BUBBLES) */}
+          {wallets.length > 0 && (
+            <div className="wallet-strip">
+              {wallets.map((w) => (
+                <div key={w.id} className="wallet-chip">
+                  <span>{w.label || "Wallet"}</span>
+                  <span className="font-mono" style={{ color: "var(--text-muted)" }}>
+                    {shortAddr(w.address)}
+                  </span>
+                  <button
+                    className="wallet-chip-del"
+                    onClick={() => removeWallet(w.id)}
+                    title="Remove wallet"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="controls-bar">
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <div className="view-toggle">
+              <button
+                className={`toggle-btn ${viewMode === "cards" ? "active" : ""}`}
+                onClick={() => setViewMode("cards")}
+              >
+                Cards
+              </button>
+              <button
+                className={`toggle-btn ${viewMode === "table" ? "active" : ""}`}
+                onClick={() => setViewMode("table")}
+              >
+                Matrix
+              </button>
+            </div>
+          </div>
+
+          {viewMode === "cards" && (
+            <div className="cards-grid">
+              {filteredProjects.map((p) => (
+                <div key={p.id} className="project-card">
+                  <div>
+                    <div className="card-header">
+                      <div>
+                        <h3 className="card-title">{p.name}</h3>
+                        <div
+                          className="card-date font-mono"
+                          onClick={() => setEditingProject(p)}
+                          title="Click to update date"
+                        >
+                          <FaCalendarDays className="text-[#38bdf8]" />{" "}
+                          {p.mintDate
+                            ? new Date(p.mintDate).toLocaleString([], {
+                                dateStyle: "short",
+                                timeStyle: "short",
+                              })
+                            : "TBD (Click to set)"} <CiEdit />
+                        </div>
                       </div>
+                      <button
+                        className="btn btn-sm"
+                        style={{ color: "#fb7185", background: "transparent", border: "none" }}
+                        onClick={() => removeProject(p.id)}
+                      >
+                        ✕
+                      </button>
                     </div>
-                    <button
-                      className="btn btn-sm"
-                      style={{ color: "#fb7185", background: "transparent", border: "none" }}
-                      onClick={() => removeProject(p.id)}
-                    >
-                      ✕
-                    </button>
+
+                    <div className="wallet-list">
+                      {wallets.length > 0 ? (
+                        wallets.map((w) => (
+                          <div key={w.id} className="wallet-row">
+                            <div>
+                              <div className="wallet-name">{w.label || "Unlabeled"}</div>
+                              <div className="wallet-addr-text font-mono">{shortAddr(w.address)}</div>
+                            </div>
+                            <StatusBadge
+                              status={getStatus(w.id, p.id)}
+                              onClick={() => cycleStatus(w.id, p.id)}
+                            />
+                          </div>
+                        ))
+                      ) : (
+                        <div className="empty-wallet-prompt">
+                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                            No wallets connected yet.
+                          </span>
+                          <button
+                            className="btn btn-sm"
+                            style={{ marginTop: 6, width: "100%", justifyContent: "center" }}
+                            onClick={() => setShowAddWallet(true)}
+                          >
+                            + Add Wallet
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="wallet-list">
-                    {wallets.length > 0 ? (
-                      wallets.map((w) => (
-                        <div key={w.id} className="wallet-row">
-                          <div>
-                            <div className="wallet-name">{w.label || "Unlabeled"}</div>
-                            <div className="wallet-addr-text font-mono">{shortAddr(w.address)}</div>
-                          </div>
-                          <StatusBadge
-                            status={getStatus(w.id, p.id)}
-                            onClick={() => cycleStatus(w.id, p.id)}
-                          />
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ padding: "8px 0", fontSize: 12, color: "var(--text-muted)" }}>
-                        No wallets added yet.
-                      </div>
+                  <div className="card-footer">
+                    <button className="btn btn-sm" onClick={() => setEditingProject(p)}>
+                      Edit
+                    </button>
+                    {p.mintDate && (
+                      <button className="btn btn-sm" onClick={() => downloadICS(p)}>
+                        + Calendar
+                      </button>
                     )}
                   </div>
                 </div>
+              ))}
+            </div>
+          )}
 
-                <div className="card-footer">
-                  <button className="btn btn-sm" onClick={() => setEditingProject(p)}>
-                    Edit
+          {viewMode === "table" && (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: "180px" }}>Project</th>
+                    {wallets.length > 0 ? (
+                      wallets.map((w) => (
+                        <th key={w.id}>
+                          <div>{w.label || "Unlabeled"}</div>
+                          <div className="font-mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                            {shortAddr(w.address)}
+                          </div>
+                        </th>
+                      ))
+                    ) : (
+                      <th style={{ textAlign: "center" }}>
+                        <span style={{ color: "var(--text-muted)", marginRight: 8 }}>No Wallets Added</span>
+                        <button 
+                          className="btn btn-sm" 
+                          style={{ display: "inline-flex", padding: "2px 8px" }}
+                          onClick={() => setShowAddWallet(true)}
+                        >
+                          + Add Wallet
+                        </button>
+                      </th>
+                    )}
+                    <th style={{ width: 60 }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProjects.map((p) => (
+                    <tr key={p.id}>
+                      <td>
+                        <strong>{p.name}</strong>
+                        <div
+                          className="font-mono card-date"
+                          style={{ fontSize: 11 }}
+                          onClick={() => setEditingProject(p)}
+                        >
+                          {p.mintDate
+                            ? new Date(p.mintDate).toLocaleString([], {
+                                dateStyle: "short",
+                                timeStyle: "short",
+                              })
+                            : "TBD (Set date)"} <CiEdit />
+                        </div>
+                      </td>
+                      {wallets.length > 0 ? (
+                        wallets.map((w) => (
+                          <td key={w.id}>
+                            <StatusBadge
+                              status={getStatus(w.id, p.id)}
+                              onClick={() => cycleStatus(w.id, p.id)}
+                            />
+                          </td>
+                        ))
+                      ) : (
+                        <td style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}>
+                          —
+                        </td>
+                      )}
+                      <td>
+                        <button className="btn btn-sm" onClick={() => setEditingProject(p)}>
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* EDIT PROJECT MODAL */}
+          {editingProject && (
+            <div className="modal-overlay" onClick={() => setEditingProject(null)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h3>Edit Project</h3>
+                <div className="form-group">
+                  <label>Project Name</label>
+                  <input id="edit-p-name" defaultValue={editingProject.name} />
+                </div>
+                <div className="form-group">
+                  <label>Mint Date & Time</label>
+                  <input id="edit-p-date" type="datetime-local" defaultValue={editingProject.mintDate || ""} />
+                </div>
+                <div className="form-group">
+                  <label>Source URL (Optional)</label>
+                  <input id="edit-p-url" defaultValue={editingProject.sourceUrl || ""} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+                  <button className="btn" onClick={() => setEditingProject(null)}>
+                    Cancel
                   </button>
-                  {p.mintDate && (
-                    <button className="btn btn-sm" onClick={() => downloadICS(p)}>
-                      + Calendar
-                    </button>
-                  )}
+                  <button
+                    className="btn-pill"
+                    onClick={() => {
+                      const name = document.getElementById("edit-p-name").value;
+                      const date = document.getElementById("edit-p-date").value;
+                      const url = document.getElementById("edit-p-url").value;
+                      if (name) updateProject(editingProject.id, name, date, url);
+                    }}
+                  >
+                    Save Changes
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
 
-        {viewMode === "table" && (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Project</th>
-                  {wallets.map((w) => (
-                    <th key={w.id}>
-                      <div>{w.label || "Unlabeled"}</div>
-                      <div className="font-mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                        {shortAddr(w.address)}
-                      </div>
-                    </th>
-                  ))}
-                  <th style={{ width: 60 }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProjects.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      <strong>{p.name}</strong>
-                      <div
-                        className="font-mono card-date"
-                        style={{ fontSize: 11 }}
-                        onClick={() => setEditingProject(p)}
-                      >
-                        {p.mintDate
-                          ? new Date(p.mintDate).toLocaleString([], {
-                              dateStyle: "short",
-                              timeStyle: "short",
-                            })
-                          : "TBD (Set date)"} ✏️
-                      </div>
-                    </td>
-                    {wallets.map((w) => (
-                      <td key={w.id}>
-                        <StatusBadge
-                          status={getStatus(w.id, p.id)}
-                          onClick={() => cycleStatus(w.id, p.id)}
-                        />
-                      </td>
-                    ))}
-                    <td>
-                      <button className="btn btn-sm" onClick={() => setEditingProject(p)}>
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* EDIT PROJECT MODAL */}
-        {editingProject && (
-          <div className="modal-overlay" onClick={() => setEditingProject(null)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h3>Edit Project</h3>
-              <div className="form-group">
-                <label>Project Name</label>
-                <input id="edit-p-name" defaultValue={editingProject.name} />
-              </div>
-              <div className="form-group">
-                <label>Mint Date & Time</label>
-                <input id="edit-p-date" type="datetime-local" defaultValue={editingProject.mintDate || ""} />
-              </div>
-              <div className="form-group">
-                <label>Source URL (Optional)</label>
-                <input id="edit-p-url" defaultValue={editingProject.sourceUrl || ""} />
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
-                <button className="btn" onClick={() => setEditingProject(null)}>
-                  Cancel
-                </button>
-                <button
-                  className="btn-pill"
-                  onClick={() => {
-                    const name = document.getElementById("edit-p-name").value;
-                    const date = document.getElementById("edit-p-date").value;
-                    const url = document.getElementById("edit-p-url").value;
-                    if (name) updateProject(editingProject.id, name, date, url);
-                  }}
-                >
-                  Save Changes
-                </button>
+          {/* ADD PROJECT MODAL */}
+          {showAddProject && (
+            <div className="modal-overlay" onClick={() => setShowAddProject(false)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h3>Add Project</h3>
+                <div className="form-group">
+                  <label>Project Name</label>
+                  <input id="p-name" placeholder="e.g. Aero Genesis" />
+                </div>
+                <div className="form-group">
+                  <label>Mint Date & Time (Leave empty if TBD)</label>
+                  <input id="p-date" type="datetime-local" />
+                </div>
+                <div className="form-group">
+                  <label>Source URL (Optional)</label>
+                  <input id="p-url" placeholder="https://..." />
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+                  <button className="btn" onClick={() => setShowAddProject(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-pill"
+                    onClick={() => {
+                      const name = document.getElementById("p-name").value;
+                      const date = document.getElementById("p-date").value;
+                      const url = document.getElementById("p-url").value;
+                      if (name) addProject(name, date, url);
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ADD PROJECT MODAL */}
-        {showAddProject && (
-          <div className="modal-overlay" onClick={() => setShowAddProject(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h3>Add Project</h3>
-              <div className="form-group">
-                <label>Project Name</label>
-                <input id="p-name" placeholder="e.g. Aero Genesis" />
-              </div>
-              <div className="form-group">
-                <label>Mint Date & Time (Leave empty if TBD)</label>
-                <input id="p-date" type="datetime-local" />
-              </div>
-              <div className="form-group">
-                <label>Source URL (Optional)</label>
-                <input id="p-url" placeholder="https://..." />
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
-                <button className="btn" onClick={() => setShowAddProject(false)}>
-                  Cancel
-                </button>
-                <button
-                  className="btn-pill"
-                  onClick={() => {
-                    const name = document.getElementById("p-name").value;
-                    const date = document.getElementById("p-date").value;
-                    const url = document.getElementById("p-url").value;
-                    if (name) addProject(name, date, url);
-                  }}
-                >
-                  Save
-                </button>
+          {/* ADD WALLET MODAL */}
+          {showAddWallet && (
+            <div className="modal-overlay" onClick={() => setShowAddWallet(false)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h3>Add Wallet</h3>
+                <div className="form-group">
+                  <label>Label</label>
+                  <input id="w-label" placeholder="e.g. Main Vault" />
+                </div>
+                <div className="form-group">
+                  <label>Address</label>
+                  <input id="w-addr" className="font-mono" placeholder="0x..." />
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+                  <button className="btn" onClick={() => setShowAddWallet(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-pill"
+                    onClick={() => {
+                      const label = document.getElementById("w-label").value;
+                      const addr = document.getElementById("w-addr").value;
+                      if (addr) addWallet(addr, label);
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* ADD WALLET MODAL */}
-        {showAddWallet && (
-          <div className="modal-overlay" onClick={() => setShowAddWallet(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h3>Add Wallet</h3>
-              <div className="form-group">
-                <label>Label</label>
-                <input id="w-label" placeholder="e.g. Main Vault" />
-              </div>
-              <div className="form-group">
-                <label>Address</label>
-                <input id="w-addr" className="font-mono" placeholder="0x..." />
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
-                <button className="btn" onClick={() => setShowAddWallet(false)}>
-                  Cancel
-                </button>
-                <button
-                  className="btn-pill"
-                  onClick={() => {
-                    const label = document.getElementById("w-label").value;
-                    const addr = document.getElementById("w-addr").value;
-                    if (addr) addWallet(addr, label);
-                  }}
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
