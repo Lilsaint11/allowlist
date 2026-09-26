@@ -1,12 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { CiEdit } from "react-icons/ci";
 import { FaCalendarDays } from "react-icons/fa6";
+import { useAuth } from "../src/context/AuthContext";
+import AuthForm from "../src/components/AuthForm";
 
-const STORAGE = {
-  wallets: "ledger:wallets",
-  projects: "ledger:projects",
-  eligibility: "ledger:eligibility",
-};
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -24,10 +21,18 @@ function shortAddr(addr) {
   return addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
 }
 
-function buildICS(project) {
-  if (!project.mintDate) return "";
+function toDatetimeLocal(value) {
+  if (!value) return "";
+  const d = new Date(value.replace(" ", "T")); // handle "YYYY-MM-DD HH:mm:ss" from Laravel
+  if (isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
-  const startDate = new Date(project.mintDate);
+function buildICS(project) {
+  if (!project.mint_date) return "";
+
+  const startDate = new Date(project.mint_date);
   const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
 
   const formatICSDate = (d) =>
@@ -99,10 +104,47 @@ function StatusBadge({ status, onClick }) {
 }
 
 export default function AllowlistLedgerApp() {
+  const { user, loading, logout } = useAuth();
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+
   const [currentPage, setCurrentPage] = useState("landing");
-  const [wallets, setWallets] = useState(() => load(STORAGE.wallets, []));
-  const [projects, setProjects] = useState(() => load(STORAGE.projects, []));
-  const [eligibility, setEligibility] = useState(() => load(STORAGE.eligibility, {}));
+  const { token } = useAuth();
+  const [wallets, setWallets] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [eligibility, setEligibility] = useState({});
+  const [dataLoading, setDataLoading] = useState(true);
+
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+
+  function loadDashboard() {
+    fetch(`${API_URL}/dashboard`, { headers: authHeaders })
+      .then((res) => res.json())
+      .then((data) => {
+        setWallets(data.wallets || []);
+        setProjects(data.projects || []);
+
+        const eligibilityMap = {};
+        (data.projects || []).forEach((p) => {
+          (p.eligibility || []).forEach((e) => {
+            eligibilityMap[cellKey(e.wallet_id, e.project_id)] = {
+              status: e.status,
+              method: e.method,
+              checkedAt: e.checked_at,
+            };
+          });
+        });
+        setEligibility(eligibilityMap);
+      })
+      .finally(() => setDataLoading(false));
+  }
+
+  useEffect(() => {
+    if (token) loadDashboard();
+  }, [token]);
   const [viewMode, setViewMode] = useState("cards");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -110,9 +152,9 @@ export default function AllowlistLedgerApp() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
 
-  useEffect(() => localStorage.setItem(STORAGE.wallets, JSON.stringify(wallets)), [wallets]);
-  useEffect(() => localStorage.setItem(STORAGE.projects, JSON.stringify(projects)), [projects]);
-  useEffect(() => localStorage.setItem(STORAGE.eligibility, JSON.stringify(eligibility)), [eligibility]);
+  // useEffect(() => localStorage.setItem(STORAGE.wallets, JSON.stringify(wallets)), [wallets]);
+  // useEffect(() => localStorage.setItem(STORAGE.projects, JSON.stringify(projects)), [projects]);
+  // useEffect(() => localStorage.setItem(STORAGE.eligibility, JSON.stringify(eligibility)), [eligibility]);
 
   const cellKey = (walletId, projectId) => `${walletId}|${projectId}`;
 
@@ -121,55 +163,120 @@ export default function AllowlistLedgerApp() {
   }
 
   function cycleStatus(walletId, projectId) {
-    const order = ["unchecked", "eligible", "not_eligible"];
-    const current = getStatus(walletId, projectId);
-    const next = order[(order.indexOf(current) + 1) % order.length];
-    setEligibility((prev) => ({
-      ...prev,
-      [cellKey(walletId, projectId)]: {
-        status: next,
-        method: "manual",
-        checkedAt: new Date().toISOString(),
-      },
-    }));
+    fetch(`${API_URL}/eligibility/cycle`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ wallet_id: walletId, project_id: projectId }),
+    })
+      .then((res) => res.json())
+      .then((record) => {
+        setEligibility((prev) => ({
+          ...prev,
+          [cellKey(walletId, projectId)]: {
+            status: record.status,
+            method: record.method,
+            checkedAt: record.checked_at,
+          },
+        }));
+      });
   }
 
   function addWallet(address, label) {
-    setWallets((prev) => [...prev, { id: uid(), address: address.trim(), label: label.trim() }]);
-    setShowAddWallet(false);
+    fetch(`${API_URL}/wallets`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ address: address.trim(), label: label.trim() }),
+    })
+      .then((res) => res.json())
+      .then((wallet) => {
+        setWallets((prev) => [...prev, wallet]);
+        setShowAddWallet(false);
+      });
   }
 
   function addProject(name, mintDate, sourceUrl) {
-    setProjects((prev) => [...prev, { id: uid(), name: name.trim(), mintDate, sourceUrl: sourceUrl.trim() }]);
-    setShowAddProject(false);
+    fetch(`${API_URL}/projects`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ name: name.trim(), mint_date: mintDate || null, source_url: sourceUrl.trim() }),
+    })
+      .then((res) => res.json())
+      .then((project) => {
+        setProjects((prev) => [...prev, { ...project, eligibility: [] }]);
+        setShowAddProject(false);
+      });
   }
 
   function updateProject(id, name, mintDate, sourceUrl) {
-    setProjects((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, name: name.trim(), mintDate, sourceUrl: sourceUrl.trim() } : p
-      )
-    );
-    setEditingProject(null);
+    fetch(`${API_URL}/projects/${id}`, {
+      method: "PUT",
+      headers: authHeaders,
+      body: JSON.stringify({ name: name.trim(), mint_date: mintDate || null, source_url: sourceUrl.trim() }),
+    })
+      .then((res) => res.json())
+      .then((updated) => {
+        setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updated } : p)));
+        setEditingProject(null);
+      });
   }
 
   function removeWallet(id) {
-    setWallets((prev) => prev.filter((w) => w.id !== id));
+    fetch(`${API_URL}/wallets/${id}`, { method: "DELETE", headers: authHeaders }).then(() => {
+      setWallets((prev) => prev.filter((w) => w.id !== id));
+    });
   }
 
   function removeProject(id) {
-    setProjects((prev) => prev.filter((p) => p.id !== id));
+    fetch(`${API_URL}/projects/${id}`, { method: "DELETE", headers: authHeaders }).then(() => {
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+    });
   }
-
   const filteredProjects = useMemo(() => {
     return projects
       .filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
       .sort((a, b) => {
-        if (!a.mintDate) return 1;
-        if (!b.mintDate) return -1;
-        return new Date(a.mintDate) - new Date(b.mintDate);
+        if (!a.mint_date) return 1;
+        if (!b.mint_date) return -1;
+        return new Date(a.mint_date) - new Date(b.mint_date);
       });
   }, [projects, searchQuery]);
+  if (dataLoading) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 16,
+          background: "#030712",
+          color: "#f8fafc",
+        }}
+      >
+        <div className="brand-icon" style={{ width: 28, height: 28 }}>
+          <div className="brand-icon-bar" />
+          <div className="brand-icon-bar" />
+          <div className="brand-icon-bar" />
+        </div>
+        <p style={{ fontSize: 13, color: "#94a3b8", letterSpacing: "0.02em" }}>
+          Loading your ledger...
+        </p>
+        <style>{`
+        .brand-icon-bar {
+          animation: pulseBar 1.2s ease-in-out infinite;
+        }
+        .brand-icon-bar:nth-child(2) { animation-delay: 0.15s; }
+        .brand-icon-bar:nth-child(3) { animation-delay: 0.3s; }
+        @keyframes pulseBar {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 1; }
+        }
+      `}</style>
+      </div>
+    );
+  }
+  if (!user) return <AuthForm />;
 
   return (
     <div className="app-container">
@@ -787,9 +894,16 @@ export default function AllowlistLedgerApp() {
             </button>
           ) : (
             <button className="btn-pill btn-pill-secondary" onClick={() => setCurrentPage("landing")}>
-              ← Back 
+              ← Back
             </button>
           )}
+          <button
+            className="btn-pill btn-pill-secondary"
+            onClick={logout}
+            title={user?.email}
+          >
+            Log out
+          </button>
         </div>
       </nav>
 
@@ -903,11 +1017,11 @@ export default function AllowlistLedgerApp() {
                           title="Click to update date"
                         >
                           <FaCalendarDays className="text-[#38bdf8]" />{" "}
-                          {p.mintDate
-                            ? new Date(p.mintDate).toLocaleString([], {
-                                dateStyle: "short",
-                                timeStyle: "short",
-                              })
+                          {p.mint_date
+                            ? new Date(p.mint_date).toLocaleString([], {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })
                             : "TBD (Click to set)"} <CiEdit />
                         </div>
                       </div>
@@ -955,7 +1069,7 @@ export default function AllowlistLedgerApp() {
                     <button className="btn btn-sm" onClick={() => setEditingProject(p)}>
                       Edit
                     </button>
-                    {p.mintDate && (
+                    {p.mint_date && (
                       <button className="btn btn-sm" onClick={() => downloadICS(p)}>
                         + Calendar
                       </button>
@@ -984,8 +1098,8 @@ export default function AllowlistLedgerApp() {
                     ) : (
                       <th style={{ textAlign: "center" }}>
                         <span style={{ color: "var(--text-muted)", marginRight: 8 }}>No Wallets Added</span>
-                        <button 
-                          className="btn btn-sm" 
+                        <button
+                          className="btn btn-sm"
                           style={{ display: "inline-flex", padding: "2px 8px" }}
                           onClick={() => setShowAddWallet(true)}
                         >
@@ -1008,9 +1122,9 @@ export default function AllowlistLedgerApp() {
                         >
                           {p.mintDate
                             ? new Date(p.mintDate).toLocaleString([], {
-                                dateStyle: "short",
-                                timeStyle: "short",
-                              })
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })
                             : "TBD (Set date)"} <CiEdit />
                         </div>
                       </td>
@@ -1051,12 +1165,14 @@ export default function AllowlistLedgerApp() {
                 </div>
                 <div className="form-group">
                   <label>Mint Date & Time</label>
-                  <input id="edit-p-date" type="datetime-local" defaultValue={editingProject.mintDate || ""} />
-                </div>
+                  <input
+                    id="edit-p-date"
+                    type="datetime-local"
+                    defaultValue={toDatetimeLocal(editingProject.mint_date)}
+                  />                </div>
                 <div className="form-group">
                   <label>Source URL (Optional)</label>
-                  <input id="edit-p-url" defaultValue={editingProject.sourceUrl || ""} />
-                </div>
+                  <input id="edit-p-url" defaultValue={editingProject.source_url || ""} />                </div>
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
                   <button className="btn" onClick={() => setEditingProject(null)}>
                     Cancel
