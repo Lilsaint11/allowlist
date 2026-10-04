@@ -103,6 +103,112 @@ function StatusBadge({ status, onClick }) {
   );
 }
 
+function RecentlyDeletedPanel({ onClose, authHeaders, apiUrl, onRestored }) {
+  const [trashedWallets, setTrashedWallets] = useState([]);
+  const [trashedProjects, setTrashedProjects] = useState([]);
+  const [loadingTrash, setLoadingTrash] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`${apiUrl}/wallets/trashed`, { headers: authHeaders }).then((r) => r.json()),
+      fetch(`${apiUrl}/projects/trashed`, { headers: authHeaders }).then((r) => r.json()),
+    ])
+      .then(([wallets, projects]) => {
+        setTrashedWallets(wallets);
+        setTrashedProjects(projects);
+      })
+      .finally(() => setLoadingTrash(false));
+  }, []);
+
+  function restoreWallet(id) {
+    fetch(`${apiUrl}/wallets/${id}/restore`, { method: "POST", headers: authHeaders }).then(() => {
+      setTrashedWallets((prev) => prev.filter((w) => w.id !== id));
+      onRestored();
+    });
+  }
+
+  function restoreProject(id) {
+    fetch(`${apiUrl}/projects/${id}/restore`, { method: "POST", headers: authHeaders }).then(() => {
+      setTrashedProjects((prev) => prev.filter((p) => p.id !== id));
+      onRestored();
+    });
+  }
+
+  function forceDeleteWallet(id) {
+    if (!confirm("Permanently delete this wallet? This cannot be undone.")) return;
+    fetch(`${apiUrl}/wallets/${id}/force`, { method: "DELETE", headers: authHeaders }).then(() => {
+      setTrashedWallets((prev) => prev.filter((w) => w.id !== id));
+    });
+  }
+
+  function forceDeleteProject(id) {
+    if (!confirm("Permanently delete this project? This cannot be undone.")) return;
+    fetch(`${apiUrl}/projects/${id}/force`, { method: "DELETE", headers: authHeaders }).then(() => {
+      setTrashedProjects((prev) => prev.filter((p) => p.id !== id));
+    });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginBottom: 12 }}>Recently Deleted</h3>
+
+        {loadingTrash ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading...</p>
+        ) : (
+          <>
+            <h4 style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>Wallets</h4>
+            {trashedWallets.length === 0 && (
+              <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 12 }}>Nothing here.</p>
+            )}
+            {trashedWallets.map((w) => (
+              <div key={w.id} className="wallet-row">
+                <span>{w.label || shortAddr(w.address)}</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button className="btn btn-sm" onClick={() => restoreWallet(w.id)}>Restore</button>
+                  <button
+                    className="btn btn-sm"
+                    style={{ color: "#fb7185" }}
+                    onClick={() => forceDeleteWallet(w.id)}
+                  >
+                    Delete Forever
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <h4 style={{ fontSize: 13, color: "var(--text-muted)", margin: "16px 0 6px" }}>Projects</h4>
+            {trashedProjects.length === 0 && (
+              <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 12 }}>Nothing here.</p>
+            )}
+            {trashedProjects.map((p) => (
+              <div key={p.id} className="wallet-row">
+                <span>{p.name}</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button className="btn btn-sm" onClick={() => restoreProject(p.id)}>
+                    Restore
+                  </button>
+                  <button
+                    className="btn btn-sm"
+                    style={{ color: "#fb7185" }}
+                    onClick={() => forceDeleteProject(p.id)}
+                  >
+                    Delete Forever
+                  </button>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        <button className="btn-pill btn-pill-secondary" onClick={onClose} style={{ marginTop: 16, width: "100%" }}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AllowlistLedgerApp() {
   const { user, loading, logout } = useAuth();
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
@@ -113,6 +219,8 @@ export default function AllowlistLedgerApp() {
   const [projects, setProjects] = useState([]);
   const [eligibility, setEligibility] = useState({});
   const [dataLoading, setDataLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [showTrash, setShowTrash] = useState(false);
 
   const authHeaders = {
     "Content-Type": "application/json",
@@ -152,6 +260,9 @@ export default function AllowlistLedgerApp() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
 
+  const [submittingProject, setSubmittingProject] = useState(false);
+  const [submittingWallet, setSubmittingWallet] = useState(false);
+
   // useEffect(() => localStorage.setItem(STORAGE.wallets, JSON.stringify(wallets)), [wallets]);
   // useEffect(() => localStorage.setItem(STORAGE.projects, JSON.stringify(projects)), [projects]);
   // useEffect(() => localStorage.setItem(STORAGE.eligibility, JSON.stringify(eligibility)), [eligibility]);
@@ -182,6 +293,7 @@ export default function AllowlistLedgerApp() {
   }
 
   function addWallet(address, label) {
+    setSubmittingWallet(true);
     fetch(`${API_URL}/wallets`, {
       method: "POST",
       headers: authHeaders,
@@ -191,10 +303,12 @@ export default function AllowlistLedgerApp() {
       .then((wallet) => {
         setWallets((prev) => [...prev, wallet]);
         setShowAddWallet(false);
-      });
+      })
+      .finally(() => setSubmittingWallet(false));
   }
 
   function addProject(name, mintDate, sourceUrl) {
+    setSubmittingProject(true);
     fetch(`${API_URL}/projects`, {
       method: "POST",
       headers: authHeaders,
@@ -204,7 +318,8 @@ export default function AllowlistLedgerApp() {
       .then((project) => {
         setProjects((prev) => [...prev, { ...project, eligibility: [] }]);
         setShowAddProject(false);
-      });
+      })
+      .finally(() => setSubmittingProject(false));
   }
 
   function updateProject(id, name, mintDate, sourceUrl) {
@@ -233,13 +348,25 @@ export default function AllowlistLedgerApp() {
   }
   const filteredProjects = useMemo(() => {
     return projects
-      .filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      .filter((p) => {
+        const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+        if (!matchesSearch) return false;
+
+        if (statusFilter === "all") return true;
+
+        // show project if ANY wallet has the selected status for it
+        return wallets.some((w) => getStatus(w.id, p.id) === statusFilter);
+      })
       .sort((a, b) => {
         if (!a.mint_date) return 1;
         if (!b.mint_date) return -1;
         return new Date(a.mint_date) - new Date(b.mint_date);
       });
-  }, [projects, searchQuery]);
+  }, [projects, searchQuery, statusFilter, wallets, eligibility]);
+
+  if (loading) return <div>...</div>;
+  if (!user) return <AuthForm />;
+
   if (dataLoading) {
     return (
       <div
@@ -276,7 +403,7 @@ export default function AllowlistLedgerApp() {
       </div>
     );
   }
-  if (!user) return <AuthForm />;
+
 
   return (
     <div className="app-container">
@@ -904,6 +1031,9 @@ export default function AllowlistLedgerApp() {
           >
             Log out
           </button>
+          <button className="btn-pill btn-pill-secondary" onClick={() => setShowTrash(true)}>
+            Recently Deleted
+          </button>
         </div>
       </nav>
 
@@ -1001,10 +1131,23 @@ export default function AllowlistLedgerApp() {
                 Matrix
               </button>
             </div>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="search-input"
+              style={{ maxWidth: 160 }}
+            >
+              <option value="all">All Statuses</option>
+              <option value="eligible">Eligible</option>
+              <option value="not_eligible">Not Eligible</option>
+              <option value="unchecked">Unchecked</option>
+            </select>
           </div>
 
           {viewMode === "cards" && (
             <div className="cards-grid">
+
               {filteredProjects.map((p) => (
                 <div key={p.id} className="project-card">
                   <div>
@@ -1035,33 +1178,49 @@ export default function AllowlistLedgerApp() {
                     </div>
 
                     <div className="wallet-list">
-                      {wallets.length > 0 ? (
-                        wallets.map((w) => (
+                      {(() => {
+                        const visibleWallets =
+                          statusFilter === "all"
+                            ? wallets
+                            : wallets.filter((w) => getStatus(w.id, p.id) === statusFilter);
+
+                        if (wallets.length === 0) {
+                          return (
+                            <div className="empty-wallet-prompt">
+                              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                No wallets connected yet.
+                              </span>
+                              <button
+                                className="btn btn-sm"
+                                style={{ marginTop: 6, width: "100%", justifyContent: "center" }}
+                                onClick={() => setShowAddWallet(true)}
+                              >
+                                + Add Wallet
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        if (visibleWallets.length === 0) {
+                          return (
+                            <div className="empty-wallet-prompt">
+                              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                No wallets match this filter.
+                              </span>
+                            </div>
+                          );
+                        }
+
+                        return visibleWallets.map((w) => (
                           <div key={w.id} className="wallet-row">
                             <div>
                               <div className="wallet-name">{w.label || "Unlabeled"}</div>
                               <div className="wallet-addr-text font-mono">{shortAddr(w.address)}</div>
                             </div>
-                            <StatusBadge
-                              status={getStatus(w.id, p.id)}
-                              onClick={() => cycleStatus(w.id, p.id)}
-                            />
+                            <StatusBadge status={getStatus(w.id, p.id)} onClick={() => cycleStatus(w.id, p.id)} />
                           </div>
-                        ))
-                      ) : (
-                        <div className="empty-wallet-prompt">
-                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                            No wallets connected yet.
-                          </span>
-                          <button
-                            className="btn btn-sm"
-                            style={{ marginTop: 6, width: "100%", justifyContent: "center" }}
-                            onClick={() => setShowAddWallet(true)}
-                          >
-                            + Add Wallet
-                          </button>
-                        </div>
-                      )}
+                        ));
+                      })()}
                     </div>
                   </div>
 
@@ -1074,6 +1233,15 @@ export default function AllowlistLedgerApp() {
                         + Calendar
                       </button>
                     )}
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/ledger/${p.share_id}`);
+                        alert("Share link copied!");
+                      }}
+                    >
+                      Share
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1128,20 +1296,20 @@ export default function AllowlistLedgerApp() {
                             : "TBD (Set date)"} <CiEdit />
                         </div>
                       </td>
-                      {wallets.length > 0 ? (
-                        wallets.map((w) => (
-                          <td key={w.id}>
-                            <StatusBadge
-                              status={getStatus(w.id, p.id)}
-                              onClick={() => cycleStatus(w.id, p.id)}
-                            />
-                          </td>
-                        ))
-                      ) : (
-                        <td style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}>
-                          —
-                        </td>
-                      )}
+                      {(() => {
+                        const visibleWallets = statusFilter === "all" ? wallets : wallets.filter((w) => getStatus(w.id, p.id) === statusFilter);
+                        if (wallets.length === 0) {
+                          return <td style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}>—</td>;
+                        }
+                        return wallets.map((w) => {
+                          const isVisible = statusFilter === "all" || getStatus(w.id, p.id) === statusFilter;
+                          return (
+                            <td key={w.id} style={{ opacity: isVisible ? 1 : 0.25 }}>
+                              <StatusBadge status={getStatus(w.id, p.id)} onClick={() => cycleStatus(w.id, p.id)} />
+                            </td>
+                          );
+                        });
+                      })()}
                       <td>
                         <button className="btn btn-sm" onClick={() => setEditingProject(p)}>
                           Edit
@@ -1216,6 +1384,7 @@ export default function AllowlistLedgerApp() {
                   </button>
                   <button
                     className="btn-pill"
+                    disabled={submittingProject}
                     onClick={() => {
                       const name = document.getElementById("p-name").value;
                       const date = document.getElementById("p-date").value;
@@ -1223,7 +1392,7 @@ export default function AllowlistLedgerApp() {
                       if (name) addProject(name, date, url);
                     }}
                   >
-                    Save
+                    {submittingProject ? "Saving..." : "Save"}
                   </button>
                 </div>
               </div>
@@ -1249,17 +1418,33 @@ export default function AllowlistLedgerApp() {
                   </button>
                   <button
                     className="btn-pill"
+                    disabled={submittingWallet}
                     onClick={() => {
                       const label = document.getElementById("w-label").value;
-                      const addr = document.getElementById("w-addr").value;
-                      if (addr) addWallet(addr, label);
+                      const addr = document.getElementById("w-addr").value.trim();
+
+                      if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+                        alert("Please enter a valid Ethereum wallet address (0x followed by 40 hex characters).");
+                        return;
+                      }
+
+                      addWallet(addr, label);
                     }}
                   >
-                    Save
+                    {submittingWallet ? "Saving..." : "Save"}
                   </button>
                 </div>
               </div>
             </div>
+          )}
+
+          {showTrash && (
+            <RecentlyDeletedPanel
+              onClose={() => setShowTrash(false)}
+              authHeaders={authHeaders}
+              apiUrl={API_URL}
+              onRestored={loadDashboard}
+            />
           )}
         </div>
       )}
