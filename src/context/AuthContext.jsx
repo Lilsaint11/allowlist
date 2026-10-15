@@ -16,7 +16,7 @@ export function AuthProvider({ children }) {
             return;
         }
 
-        fetch(`${API_URL}/me`, {
+        fetch(`${API_URL}/api/me`, {
             headers: {
                 Authorization: `Bearer ${token}`,
                 Accept: "application/json",
@@ -58,7 +58,7 @@ export function AuthProvider({ children }) {
     }
 
     async function register(name, email, password, passwordConfirmation) {
-        const res = await fetch(`${API_URL}/register`, {
+        const res = await fetch(`${API_URL}/api/register`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -84,7 +84,7 @@ export function AuthProvider({ children }) {
     }
 
     async function logout() {
-        await fetch(`${API_URL}/logout`, {
+        await fetch(`${API_URL}/api/logout`, {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${token}`,

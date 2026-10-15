@@ -8,7 +8,7 @@ export default function VerifyEmail() {
     const [status, setStatus] = useState("verifying");
 
     useEffect(() => {
-        const url = `${API_URL}/email/verify/${params.get("id") ? "" : ""}`;
+        const url = `${API_URL}/api/email/verify/${params.get("id") ? "" : ""}`;
         // Rebuild the full backend URL from the query string Laravel generated
         const backendUrl = `${window.location.origin.replace(window.location.port, "8000")}/api${window.location.pathname.replace("/verify-email", "/email/verify")}${window.location.search}`;
 

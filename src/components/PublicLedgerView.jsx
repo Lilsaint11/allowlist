@@ -15,7 +15,7 @@ export default function PublicLedgerView() {
     const [error, setError] = useState(false);
 
     useEffect(() => {
-        fetch(`${API_URL}/public/ledger/${shareId}`)
+        fetch(`${API_URL}/api/public/ledger/${shareId}`)
             .then((res) => {
                 if (!res.ok) throw new Error();
                 return res.json();

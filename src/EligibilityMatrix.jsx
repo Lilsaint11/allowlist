@@ -229,7 +229,7 @@ export default function AllowlistLedgerApp() {
   };
 
   function loadDashboard() {
-    fetch(`${API_URL}/dashboard`, { headers: authHeaders })
+    fetch(`${API_URL}/api/dashboard`, { headers: authHeaders })
       .then((res) => res.json())
       .then((data) => {
         setWallets(data.wallets || []);
@@ -274,7 +274,7 @@ export default function AllowlistLedgerApp() {
   }
 
   function cycleStatus(walletId, projectId) {
-    fetch(`${API_URL}/eligibility/cycle`, {
+    fetch(`${API_URL}/api/eligibility/cycle`, {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify({ wallet_id: walletId, project_id: projectId }),
@@ -294,7 +294,7 @@ export default function AllowlistLedgerApp() {
 
   function addWallet(address, label) {
     setSubmittingWallet(true);
-    fetch(`${API_URL}/wallets`, {
+    fetch(`${API_URL}/api/wallets`, {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify({ address: address.trim(), label: label.trim() }),
@@ -309,7 +309,7 @@ export default function AllowlistLedgerApp() {
 
   function addProject(name, mintDate, sourceUrl) {
     setSubmittingProject(true);
-    fetch(`${API_URL}/projects`, {
+    fetch(`${API_URL}/api/projects`, {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify({ name: name.trim(), mint_date: mintDate || null, source_url: sourceUrl.trim() }),
@@ -323,7 +323,7 @@ export default function AllowlistLedgerApp() {
   }
 
   function updateProject(id, name, mintDate, sourceUrl) {
-    fetch(`${API_URL}/projects/${id}`, {
+    fetch(`${API_URL}/api/projects/${id}`, {
       method: "PUT",
       headers: authHeaders,
       body: JSON.stringify({ name: name.trim(), mint_date: mintDate || null, source_url: sourceUrl.trim() }),
@@ -336,13 +336,13 @@ export default function AllowlistLedgerApp() {
   }
 
   function removeWallet(id) {
-    fetch(`${API_URL}/wallets/${id}`, { method: "DELETE", headers: authHeaders }).then(() => {
+    fetch(`${API_URL}/api/wallets/${id}`, { method: "DELETE", headers: authHeaders }).then(() => {
       setWallets((prev) => prev.filter((w) => w.id !== id));
     });
   }
 
   function removeProject(id) {
-    fetch(`${API_URL}/projects/${id}`, { method: "DELETE", headers: authHeaders }).then(() => {
+    fetch(`${API_URL}/api/projects/${id}`, { method: "DELETE", headers: authHeaders }).then(() => {
       setProjects((prev) => prev.filter((p) => p.id !== id));
     });
   }
